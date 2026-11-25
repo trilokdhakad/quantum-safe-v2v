@@ -17,6 +17,7 @@
         <input id="lab-noise" type="range" min="0" max="10" step="0.5" value="1" aria-label="Channel error rate"></label>
       <button id="lab-go" type="button" class="go">Send ${N.toLocaleString()} photons</button>
     </div>
+    <p class="lab-hint" id="lab-hint" aria-live="polite"></p>
     <div class="lab-strip-wrap"><table class="lab-strip" aria-label="The first photons, one per column"><tbody id="lab-strip"></tbody></table></div>
     <div class="lab-keys">
       <div><span class="k">Alice's sifted key</span><code id="lab-ka"></code></div>
@@ -30,7 +31,13 @@
     </div>`;
   const $ = (id) => document.getElementById(id);
   const eve = $('lab-eve'), noise = $('lab-noise');
-  const label = () => { $('lab-eve-v').textContent = eve.value + '%'; $('lab-noise-v').textContent = (+noise.value).toFixed(1) + '%'; };
+  const fill = (r) => r.style.setProperty('--fill', ((r.value - r.min) / (r.max - r.min)) * 100 + '%');
+  const label = () => {
+    $('lab-eve-v').textContent = eve.value + '%'; $('lab-noise-v').textContent = (+noise.value).toFixed(1) + '%';
+    fill(eve); fill(noise);
+    const q = B.theoryQber(eve.value / 100, noise.value / 100);
+    $('lab-hint').textContent = `Expected QBER with these settings: ${pct(q, 2)}, ${q > 0.11 ? 'above the 11% abort line, so Alice and Bob should detect Eve' : 'below the 11% abort line'}.`;
+  };
   eve.oninput = noise.oninput = label;
 
   function strip(ph) {
@@ -75,6 +82,7 @@
     const box = $('lab-nums'); box.replaceChildren();
     items.forEach(([k, v]) => { const d = document.createElement('div'); const s = document.createElement('span'); s.textContent = k; const b = document.createElement('b'); b.textContent = v; d.append(s, b); box.appendChild(d); });
     const v = $('lab-verdict');
+    v.className = 'lab-verdict'; void v.offsetWidth; // restart the fade-in on every run
     v.className = 'lab-verdict ' + (a.abort ? 'bad' : 'good');
     v.textContent = a.abort
       ? `Abort: QBER ${pct(a.qEst, 1)} is above 11%, so an eavesdropper may be present. Alice and Bob discard the key.`
@@ -84,11 +92,15 @@
   }
   function go() {
     clearTimeout(timer);
+    const btn = $('lab-go'); btn.disabled = true; btn.classList.add('busy'); btn.textContent = 'Sending…';
     const f = eve.value / 100, e = noise.value / 100;
     seed += 1;
     const ph = B.send(N, f, e, seed);
     strip(ph); keys(ph);
-    timer = setTimeout(() => results(B.analyse(ph, seed), f, e), SHOW * 70 + 150);
+    timer = setTimeout(() => {
+      results(B.analyse(ph, seed), f, e);
+      btn.disabled = false; btn.classList.remove('busy'); btn.textContent = `Send ${N.toLocaleString()} photons`;
+    }, SHOW * 70 + 150);
   }
   $('lab-go').onclick = go;
   label(); go();

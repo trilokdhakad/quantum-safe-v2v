@@ -280,15 +280,37 @@
   const PROFILES = [['classical', 'Classical (X25519 + ECDSA)'], ['pq-falcon', 'Post-quantum, Falcon-512'], ['pq-mldsa', 'Post-quantum, ML-DSA-44']];
   const SIGS = [['ecdsa', 'ECDSA P-256 (today)'], ['falcon', 'Falcon-512'], ['mldsa', 'ML-DSA-44']];
   const SCALE_METRICS = [
-    { key: 'hs_latency_ms_p50', label: 'Median handshake latency (ms)', fmt: ',.0f', ref: 100, refLabel: '100 ms budget' },
-    { key: 'hs_success_rate', label: 'Handshakes that succeed', fmt: '.0%', domain: [0, 1] },
-    { key: 'cbr_mean', label: 'Share of time the channel is busy', fmt: '.0%', domain: [0, 1] },
+    { key: 'hs_latency_ms_p50', short: 'Latency', label: 'Median handshake latency (ms)', fmt: ',.0f', ref: 100, refLabel: '100 ms budget' },
+    { key: 'hs_success_rate', short: 'Success rate', label: 'Handshakes that succeed', fmt: '.0%', domain: [0, 1] },
+    { key: 'cbr_mean', short: 'Channel load', label: 'Share of time the channel is busy', fmt: '.0%', domain: [0, 1] },
   ];
   const BSM_METRICS = [
-    { key: 'bsm_pdr_in_range', label: 'Safety messages delivered and verified (≤ 300 m)', fmt: '.0%', domain: [0, 1] },
-    { key: 'cbr_mean', label: 'Share of time the channel is busy', fmt: '.0%', domain: [0, 1] },
+    { key: 'bsm_pdr_in_range', short: 'Delivered', label: 'Safety messages delivered and verified (≤ 300 m)', fmt: '.0%', domain: [0, 1] },
+    { key: 'cbr_mean', short: 'Channel load', label: 'Share of time the channel is busy', fmt: '.0%', domain: [0, 1] },
   ];
   const state = { scaleMetric: SCALE_METRICS[0].key, policy: 'all', bsmMetric: BSM_METRICS[0].key };
+  // Segmented toggle for 2-4 options: one click, the choice always visible. Exposes .value.
+  function segmented(label, options, value, onChange) {
+    const g = document.createElement('div'); g.className = 'seg'; g.setAttribute('role', 'radiogroup'); g.setAttribute('aria-label', label);
+    let current = value;
+    const btns = options.map(([v, t]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = t; b.setAttribute('role', 'radio');
+      b.onclick = () => { if (v === current) return; current = v; sync(); onChange(v); };
+      b.onkeydown = (e) => {
+        const k = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+        if (!k) return; e.preventDefault();
+        const i = (options.findIndex(([x]) => x === current) + k + options.length) % options.length;
+        btns[i].click(); btns[i].focus();
+      };
+      g.appendChild(b); return b;
+    });
+    const sync = () => btns.forEach((b, i) => {
+      const on = options[i][0] === current;
+      b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1;
+    });
+    Object.defineProperty(g, 'value', { get: () => current });
+    sync(); return g;
+  }
   function select(label, options, value, onChange) {
     const s = document.createElement('select'); s.setAttribute('aria-label', label);
     options.forEach(([v, t]) => s.appendChild(new Option(t, v))); s.value = value;
@@ -325,8 +347,8 @@
     if (!el.dataset.ready) {
       const bar = document.createElement('div'); bar.className = 'controls';
       bar.append(
-        select('Measure', SCALE_METRICS.map((m) => [m.key, m.label]), state.scaleMetric, (v) => { state.scaleMetric = v; scaleChart(); }),
-        select('Who runs handshakes', [['all', 'Every neighbour'], ['same_direction', 'Same direction only']], state.policy, (v) => { state.policy = v; scaleChart(); }),
+        segmented('Measure', SCALE_METRICS.map((m) => [m.key, m.short]), state.scaleMetric, (v) => { state.scaleMetric = v; scaleChart(); }),
+        segmented('Who runs handshakes', [['all', 'Every neighbour'], ['same_direction', 'Same direction only']], state.policy, (v) => { state.policy = v; scaleChart(); }),
       );
       const holder = document.createElement('div'); holder.className = 'chart';
       el.append(bar, holder); el.dataset.ready = '1';
@@ -341,7 +363,7 @@
     if (!d) return fail(el);
     if (!el.dataset.ready) {
       const bar = document.createElement('div'); bar.className = 'controls';
-      bar.append(select('Measure', BSM_METRICS.map((m) => [m.key, m.label]), state.bsmMetric, (v) => { state.bsmMetric = v; bsmNetChart(); }));
+      bar.append(segmented('Measure', BSM_METRICS.map((m) => [m.key, m.short]), state.bsmMetric, (v) => { state.bsmMetric = v; bsmNetChart(); }));
       const holder = document.createElement('div'); holder.className = 'chart';
       el.append(bar, holder); el.dataset.ready = '1';
       legend($('#bsmnet-legend'), SIGS.map(([, n], i) => ({ name: n, color: C()[i] })));
@@ -370,15 +392,21 @@
       return { tr, hs: [...hs.values()], bsm: tr.events.filter((e) => e.type === 'bsm'), duration: tr.period * (tr.x.length - 1) };
     };
     const P = { mldsa: prep(TR.mldsa), classical: prep(TR.classical) };
-    const sel = select('Which run', Object.keys(LABEL).map((k) => [k, LABEL[k]]), st.key, (v) => { st.key = v; st.t = START; });
-    const play = document.createElement('button'); play.type = 'button';
-    const setPlay = () => { play.textContent = st.playing ? 'Pause' : 'Play'; play.setAttribute('aria-pressed', String(st.playing)); };
+    const SHORT = { mldsa: 'Post-quantum (ML-DSA)', classical: 'Classical (ECDSA)' };
+    const sel = segmented('Which run', Object.keys(LABEL).map((k) => [k, SHORT[k]]), st.key, (v) => { st.key = v; st.t = START; });
+    const play = document.createElement('button'); play.type = 'button'; play.className = 'icon-btn';
+    const setPlay = () => {
+      play.innerHTML = st.playing
+        ? '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg>'
+        : '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 2.5v11a1 1 0 0 0 1.5.86l9-5.5a1 1 0 0 0 0-1.72l-9-5.5A1 1 0 0 0 4 2.5z"/></svg>';
+      play.setAttribute('aria-label', st.playing ? 'Pause' : 'Play'); play.setAttribute('aria-pressed', String(st.playing));
+    };
     play.onclick = () => { st.playing = !st.playing; st.last = null; setPlay(); }; setPlay();
-    const speed = select('Speed', [['0.25', '¼× speed'], ['0.5', '½× speed'], ['1', 'real time']], '0.25', () => {});
+    const speed = segmented('Speed', [['0.25', '¼×'], ['0.5', '½×'], ['1', '1×']], '0.25', () => {});
     const slider = document.createElement('input'); slider.type = 'range'; slider.min = 0; slider.max = 1000; slider.value = 0; slider.className = 'slider';
     slider.setAttribute('aria-label', 'Replay time');
     slider.oninput = () => { st.t = (+slider.value / 1000) * P[st.key].duration; st.last = null; };
-    bar.append(sel, play, speed, slider);
+    bar.classList.add('replay-bar'); bar.append(sel, play, slider, speed);
     const canvas = document.createElement('canvas'); canvas.className = 'road'; canvas.setAttribute('role', 'img');
     canvas.setAttribute('aria-label', 'Animated replay of 60 vehicles on a 2 km highway with handshakes drawn as lines between vehicles.');
     const stats = document.createElement('div'); stats.className = 'replay-stats';
@@ -432,6 +460,7 @@
       const s = tr.summary || {};
       stats.textContent = `t = ${t.toFixed(2)} s · handshakes so far: ${ok} done, ${bad} failed, ${active} running · whole run: ${Math.round((s.hs_success_rate || 0) * 100)}% succeed, median ${d3.format('.0f')(s.hs_latency_ms_p50 || 0)} ms, channel ${Math.round((s.cbr_mean || 0) * 100)}% busy`;
       slider.value = String(Math.round((t / p.duration) * 1000));
+      slider.style.setProperty('--fill', (100 * t) / p.duration + '%');
     }
     const loop = (now) => {
       const p = P[st.key];
