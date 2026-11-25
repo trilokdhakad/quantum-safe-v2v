@@ -190,3 +190,10 @@ table.lab-strip { width: auto; border-collapse: separate; border-spacing: 3px; f
 .lab-verdict.good { background: color-mix(in srgb, var(--ok) 14%, transparent); }
 .lab-verdict.bad { background: color-mix(in srgb, var(--bad) 14%, transparent); }
 [id] { scroll-margin-top: 64px; }
+
+/* Citations */
+a.cite { text-decoration: none; font-size: 0.9em; }
+.hero a.cite { color: #cfe3ff; }
+ol.refs { padding-left: 22px; max-width: 86ch; font-size: 14.5px; }
+ol.refs li { margin: 8px 0; }
+ol.refs li:target { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 6px; }

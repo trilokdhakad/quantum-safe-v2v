@@ -1,6 +1,9 @@
 """E7 -- Handshake cost: compute, bytes on air and round trips for every protocol.
 
-PSLAP, PSRS-D2D and P²AS-IoAV (as implemented from the papers in Phase 4) and
+PSLAP [Shariq et al., Computer Networks 261:111155, 2025], PSRS-D2D [Shariq et al.,
+IEEE TMC 25(1):1445-1456, 2026] and P²AS-IoAV [Shariq et al., IEEE TVT 75(10):
+24698-24711, 2026], as implemented from the papers in Phase 4 (P²AS-IoAV with
+the paper's Kyber-512 and with the ML-KEM-768 our attacks use), and
 PQ-V2V-AKE in four configurations. Compute is the wall time of one complete
 handshake (both parties, all checks), timed over many handshakes.
 
@@ -138,13 +141,18 @@ def protocols(seed: int):
         rng, clock, ta, drones, vehicles = A.make_fleet(seed, 1, 1, [b"correct horse"])
         return lambda: P.handshake(vehicles[0], drones[0], ta, clock, rng, "text")
 
-    def p2as():
-        from qsv2v.attacks.p2as_ioav import attacks as A
-        from qsv2v.attacks.p2as_ioav import protocol as P
+    def p2as(kem_alg):
+        def make():
+            from qsv2v.attacks.p2as_ioav import attacks as A
+            from qsv2v.attacks.p2as_ioav import protocol as P
 
-        rng, kem, ta, avs, drs = A.make_network(seed, 1, 1, "oqs" if oqs else "kyber-py")
-        clock = SimClock()
-        return lambda: P.handshake(kem, avs[0], drs[0], ta, clock, rng, b"x" * 32)
+            rng, kem, ta, avs, drs = A.make_network(
+                seed, 1, 1, "oqs" if oqs else "kyber-py", kem_alg=kem_alg
+            )
+            clock = SimClock()
+            return lambda: P.handshake(kem, avs[0], drs[0], ta, clock, rng, b"x" * 32)
+
+        return make
 
     def ours(**kw):
         def make():
@@ -160,7 +168,10 @@ def protocols(seed: int):
     out += [
         ("PSLAP", "as printed (§4.3)", ec_impl, pslap),
         ("PSRS-D2D", "as printed", ec_impl, psrs),
-        ("P²AS-IoAV", "as printed", "ML-KEM-768 " + ("liboqs" if oqs else "kyber-py"), p2as),
+        ("P²AS-IoAV", "Kyber-512 (as the paper evaluates)",
+         "ML-KEM-512 " + ("liboqs" if oqs else "kyber-py"), p2as("ML-KEM-512")),
+        ("P²AS-IoAV", "ML-KEM-768 (as in our attacks)",
+         "ML-KEM-768 " + ("liboqs" if oqs else "kyber-py"), p2as("ML-KEM-768")),
         ("PQ-V2V-AKE", "ML-KEM-768 + ML-DSA-44", "liboqs" if oqs else "pure Python",
          ours()),
         ("PQ-V2V-AKE", "hybrid: + X25519", "liboqs + cryptography" if oqs else "pure Python",
@@ -257,7 +268,8 @@ def run(base: Path | None = None, quick: bool = False, log=print) -> Outcome:
     save(fig, d)
 
     ours = next(r for r in summ if r["protocol"] == "PQ-V2V-AKE")
-    papers = [r for r in summ if r["protocol"] in ("PSLAP", "PSRS-D2D", "P²AS-IoAV")]
+    papers = [r for r in summ if r["protocol"] in ("PSLAP", "PSRS-D2D", "P²AS-IoAV")
+              and "768" not in r["variant"]]  # fmt: skip
     more_bytes = all(ours["bytes_total"] > r["bytes_total"] for r in papers)
     return write_outcome(d, Outcome(
         "E7", "Handshake cost",

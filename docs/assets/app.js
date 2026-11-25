@@ -6,6 +6,7 @@
   const C = () => [css('--c0'), css('--c1'), css('--c2'), css('--c3')];
   const fmtInt = d3.format(',');
   const DATA = {};
+  const REFS = { 'PSRS-D2D': '[1]', PSLAP: '[2]', 'P2AS-IoAV': '[3]', 'P²AS-IoAV': '[3]' };
 
   async function load(name) {
     const r = await fetch(`data/${name}.json`);
@@ -113,7 +114,12 @@
   // ---------- headline numbers ----------
   function headline() {
     const { attacks, defenses, scyther, experiments, tests, qber_grid: grid, key_rate: kr, e3_distance: e3 } = DATA;
-    if (attacks) { bind('attacks_ok', attacks.filter((r) => +r.success).length); bind('attacks_total', attacks.length); }
+    if (attacks) {
+      // The three papers' attacks only; the Shor demonstration targets the ECC/RSA family, not a paper.
+      const onPapers = attacks.filter((r) => REFS[r.paper]);
+      bind('attacks_ok', onPapers.filter((r) => +r.success).length); bind('attacks_total', onPapers.length);
+      bind('paper_attacks', onPapers.length);
+    }
     if (defenses) { bind('def_ok', defenses.filter((r) => +r.blocked).length); bind('def_total', defenses.length); }
     if (scyther) { bind('scy_total', scyther.length); bind('scy_ok', scyther.filter((r) => r.verdict === 'Ok').length); }
     if (experiments) {
@@ -205,18 +211,22 @@
       rows.forEach((r) => row(tb.insertRow(), r));
     };
     fill('#attack-rows', DATA.attacks, 5, (tr, r) => {
-      td(tr, r.paper); td(tr, r.attack); td(tr, r.attacker, 'small'); td(tr, r.claim_refuted, 'small');
-      const c = pill(tr, +r.success ? `Broken: secret recovered (${r.fields_matched})` : '✗ ' + r.result, +r.success ? 'bad' : 'ok');
+      const ref = REFS[r.paper];
+      td(tr, ref ? `${r.paper.replace('P2AS', 'P²AS')} ${ref}` : 'Shor demo (ECC/RSA family)');
+      td(tr, r.attack); td(tr, r.attacker, 'small'); td(tr, r.claim_refuted, 'small');
+      const label = !ref ? `Demo: factors found (${r.fields_matched})`
+        : +r.success ? `Succeeds (${r.fields_matched} checks match)` : '✗ ' + r.result;
+      const c = pill(tr, label, !ref ? 'muted' : +r.success ? 'bad' : 'ok');
       c.title = `Recovered: ${r.recovered}\nVictim's:  ${r.victim}`;
     });
-    fill('#error-rows', DATA.paper_errors, 4, (tr, r) => { td(tr, r.paper); td(tr, r.where); td(tr, r.as_printed, 'small'); td(tr, r.effect); });
+    fill('#error-rows', DATA.paper_errors, 4, (tr, r) => { td(tr, `${r.paper.replace('P2AS', 'P²AS')} ${REFS[r.paper] || ''}`); td(tr, r.where); td(tr, r.as_printed, 'small'); td(tr, r.effect); });
     fill('#defense-rows', DATA.defenses, 4, (tr, r) => {
       td(tr, r.attack); td(tr, r.analogue_of, 'small'); td(tr, r.control || '—', 'small');
       pill(tr, +r.blocked ? '✓ Blocked' : '✗ ' + r.result, +r.blocked ? 'ok' : 'bad');
     });
     const yes = (v) => /^yes/.test(v || '');
     fill('#cost-rows', DATA.e7_cost, 9, (tr, r) => {
-      td(tr, r.protocol); td(tr, r.variant, 'small');
+      td(tr, REFS[r.protocol] ? `${r.protocol} ${REFS[r.protocol]}` : r.protocol); td(tr, r.variant, 'small');
       td(tr, d3.format('.1f')(r.compute_ms), 'r');
       td(tr, r.ec_at_c_speed_ms != null ? d3.format('.2f')(r.ec_at_c_speed_ms) : '—', 'r');
       td(tr, fmtInt(r.bytes_total), 'r'); td(tr, String(r.messages), 'r');

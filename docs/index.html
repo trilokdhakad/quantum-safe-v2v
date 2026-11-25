@@ -13,16 +13,16 @@
   <b>QSV2V</b>
   <a href="#problem">Problem</a><a href="#qkd">1 · QKD</a><a href="#lab">Try BB84</a><a href="#attacks">2 · Attacks</a>
   <a href="#protocol">3 · Our protocol</a><a href="#network">4 · Network</a>
-  <a href="#experiments">Experiments</a><a href="#conclusions">Conclusions</a>
+  <a href="#experiments">Experiments</a><a href="#conclusions">Conclusions</a><a href="#references">References</a>
   <a href="https://github.com/trilokdhakad/quantum-safe-v2v">Code ↗</a>
 </div></nav>
 
 <header class="hero"><div class="wrap">
   <div class="kicker">Major project · simulation study</div>
   <h1>Quantum-safe communication between vehicles</h1>
-  <p class="lede">Connected vehicles authenticate each other with elliptic-curve cryptography, which a large quantum computer will break. We tested both proposed replacements, quantum key distribution and post-quantum cryptography, broke three recently published V2V protocols, designed and formally verified a post-quantum handshake, and measured what it costs on a crowded road.</p>
+  <p class="lede">Connected vehicles authenticate each other with elliptic-curve cryptography, which a large quantum computer will break. We tested both proposed replacements, quantum key distribution and post-quantum cryptography. We showed that three recently published authentication schemes for drones and autonomous vehicles <a class="cite" href="#references">[1–3]</a> fail against seven concrete attacks. We then designed and formally verified a post-quantum vehicle handshake and measured what it costs on a crowded road.</p>
   <div class="stats">
-    <div class="stat"><div class="v"><span data-bind="attacks_ok">–</span>/<span data-bind="attacks_total">–</span></div><div class="l">attacks on published protocols recover the victim's secret</div></div>
+    <div class="stat"><div class="v"><span data-bind="attacks_ok">–</span>/<span data-bind="attacks_total">–</span></div><div class="l">attacks on the three published schemes [1–3] recover the victim's secret</div></div>
     <div class="stat"><div class="v"><span data-bind="def_ok">–</span>/<span data-bind="def_total">–</span></div><div class="l">of those attack classes blocked by our protocol</div></div>
     <div class="stat"><div class="v"><span data-bind="scy_total">–</span></div><div class="l">security claims checked in Scyther: no attack found</div></div>
     <div class="stat"><div class="v"><span data-bind="exp_supported">–</span>/<span data-bind="exp_tested">–</span></div><div class="l">experiment hypotheses confirmed (<span data-bind="exp_partly">–</span> more partly)</div></div>
@@ -39,11 +39,11 @@
   <div class="eyebrow">The problem</div>
   <h2>V2V security today will not survive a quantum computer</h2>
   <p>Vehicles broadcast signed safety messages about ten times a second (position, speed, braking) and set up keys with each other for private exchanges. Today both rest on elliptic-curve cryptography (ECDSA and ECDH, as in IEEE 1609.2). Shor's algorithm solves the elliptic-curve discrete-log problem on a large quantum computer, so every signature could be forged and every recorded key exchange decrypted.</p>
-  <p>Two replacements are proposed. <b>Quantum key distribution (QKD)</b> uses physics: measuring a photon disturbs it, so an eavesdropper shows up as errors. <b>Post-quantum cryptography (PQC)</b> uses new mathematics that quantum computers are not known to break: NIST standardised ML-KEM and ML-DSA in 2024. Several recent papers also propose "secure" V2V protocols of their own. This project asks which of these actually works for vehicles, and at what cost.</p>
+  <p>Two replacements are proposed. <b>Quantum key distribution (QKD)</b> uses physics: measuring a photon disturbs it, so an eavesdropper shows up as errors. <b>Post-quantum cryptography (PQC)</b> uses new mathematics that quantum computers are not known to break: NIST standardised ML-KEM and ML-DSA in 2024. Three recent schemes for drone and autonomous-vehicle authentication, PSRS-D2D <a class="cite" href="#ref1">[1]</a>, PSLAP <a class="cite" href="#ref2">[2]</a> and P²AS-IoAV <a class="cite" href="#ref3">[3]</a>, each come with a formal security argument (a Real-or-Random proof and Scyther verification). The third already uses a post-quantum KEM. This project asks which approach actually works for vehicles, and at what cost.</p>
   <h3>What we built (one Python codebase, every result reproducible)</h3>
   <div class="grid4" style="margin-top:12px">
     <div class="card part"><div class="n">1</div><h3>A BB84 QKD simulator</h3><p>On Qiskit Aer and NumPy, with channel noise, photon loss, an eavesdropper, Cascade error correction and privacy amplification.</p></div>
-    <div class="card part"><div class="n">2</div><h3>Attacks on three papers</h3><p>PSLAP, PSRS-D2D and P²AS-IoAV implemented from their own equations, then broken, plus Shor's algorithm on a simulated quantum computer.</p></div>
+    <div class="card part"><div class="n">2</div><h3>Attacks on three published schemes</h3><p>PSRS-D2D [1], PSLAP [2] and P²AS-IoAV [3], implemented from their own equations and figures, then attacked; plus Shor's algorithm on a simulated quantum computer.</p></div>
     <div class="card part"><div class="n">3</div><h3>PQ-V2V-AKE, our protocol</h3><p>A three-message post-quantum handshake with rotating pseudonyms, tested against every attack and verified in Scyther.</p></div>
     <div class="card part"><div class="n">4</div><h3>A V2V network simulator</h3><p>Up to 200 vehicles on a highway with a realistic 802.11p radio, to see whether post-quantum crypto fits on a shared channel.</p></div>
   </div>
@@ -76,16 +76,24 @@
 
 <section id="attacks"><div class="wrap">
   <div class="eyebrow">Part 2 · Cryptanalysis</div>
-  <h2>Three recent V2V protocols, broken in seconds</h2>
-  <p class="intro">Each protocol was implemented from the paper's own equations on real P-256 and ML-KEM-768 cryptography. Every attacker gets only what its threat model allows; the victim's true secret is used only to check the result. All <span data-bind="attacks_total">–</span> attacks recover it exactly.</p>
+  <h2>Three published schemes, seven successful attacks</h2>
+  <p class="intro">The schemes are PSRS-D2D <a class="cite" href="#ref1">[1]</a> (drone-to-drone, <i>IEEE TMC</i> 2026), PSLAP <a class="cite" href="#ref2">[2]</a> (autonomous vehicle–drone, <i>Computer Networks</i> 2025) and P²AS-IoAV <a class="cite" href="#ref3">[3]</a> (vehicle–UAV and UAV–cloud with CRYSTALS-Kyber, <i>IEEE TVT</i> 2026). Each was implemented from the paper's own equations and figures on real P-256 and ML-KEM cryptography. Every attacker gets only what the paper's threat model allows; the victim's true secret is used only to check the result. All <span data-bind="paper_attacks">–</span> attacks on the three schemes recover it exactly. The last row is a separate demonstration of Shor's algorithm against the elliptic-curve/RSA family, not an attack on any of the three papers.</p>
   <div class="card tablewrap">
-    <table><thead><tr><th>Paper</th><th>Attack</th><th>What the attacker has</th><th>Claim it refutes</th><th>Result</th></tr></thead>
+    <table><thead><tr><th>Scheme</th><th>Attack</th><th>What the attacker has</th><th>Paper's claim it refutes</th><th>Result</th></tr></thead>
     <tbody id="attack-rows"></tbody></table>
   </div>
   <details><summary>Printing errors found while implementing the papers</summary>
     <div class="card tablewrap" style="margin-top:10px"><table><thead><tr><th>Paper</th><th>Where</th><th>As printed</th><th>Effect</th></tr></thead><tbody id="error-rows"></tbody></table></div>
   </details>
-  <p class="takeaway">The flaws are in the protocol design, not just the curve: session keys built from public values, no forward secrecy, a static identifier sent in clear, a stored password verifier, and certificates whose algebra leaks the master key after two vehicles are captured. Even with a post-quantum KEM (P²AS-IoAV), the design still fails.</p>
+  <details><summary>Scope of each attack (read before quoting a result)</summary>
+    <ul class="conclusions" style="margin-top:8px">
+      <li><b>PSLAP [2], session linking:</b> the text of §4.3 sends the pseudo-identity PID<sub>AV</sub> in clear, so any eavesdropper can link a vehicle's sessions. Fig. 3 masks it as TID<sub>AV</sub> = h(X) ⊕ PID<sub>AV</sub>; against that variant only the drones, not an outside eavesdropper, can link sessions.</li>
+      <li><b>P²AS-IoAV [3], past-session decryption:</b> needs both parties' long-term private keys, or the trusted authority's copies of them, since the authority generates every private key. The drone's key alone only de-anonymises the vehicle.</li>
+      <li><b>P²AS-IoAV [3], forged message 1:</b> the drone accepts a message 1 forged under a registered vehicle's identity (impersonation), but the forger does not learn that session's key.</li>
+      <li><b>PSRS-D2D [1], master-key extraction:</b> two captured drones' certificates give the authority's secrets, which then also let the attacker impersonate drones that were never captured.</li>
+    </ul>
+  </details>
+  <p class="takeaway">The flaws are in the protocol design, not just the curve: session keys built from public values, no forward secrecy, a static identifier sent in clear, a stored password verifier, and certificates whose algebra leaks the master key after two vehicles are captured. Even with a post-quantum KEM (P²AS-IoAV [3]), the design still fails.</p>
 </div></section>
 
 <section id="protocol"><div class="wrap">
@@ -115,7 +123,7 @@
   <p class="note">Modelled in Scyther, the tool the base papers used, with the same claim set (secrecy, aliveness, agreement, synchronisation) for both vehicles: <b data-bind="scy_ok">–</b> of <span data-bind="scy_total">–</span> claims hold, with no attack found within bounds (5 runs, 7 runs, unbounded). A deliberately broken variant, with the responder's signature removed, fails as it should.</p>
 
   <h3>What it costs</h3>
-  <p class="note">One complete handshake, both vehicles (mean of 40 timed runs). The papers' elliptic-curve maths runs on a slow pure-Python library here, so the second column estimates it at OpenSSL speed.</p>
+  <p class="note">One complete handshake, both parties (mean of 40 timed runs). PSRS-D2D [1] and PSLAP [2] run their elliptic-curve maths on a slow pure-Python library here, so the second column estimates it at OpenSSL speed. P²AS-IoAV [3] is shown with the Kyber-512 parameter set its own evaluation uses (Sec. VII-B), and with the ML-KEM-768 our attacks use. Our message sizes come from our P-256 implementation (64-byte points) and can differ from the papers' own bit counts.</p>
   <div class="card tablewrap"><table><thead><tr><th>Protocol</th><th>Variant</th><th class="r">Compute (ms)</th><th class="r">EC at OpenSSL speed (ms)</th><th class="r">Bytes on air</th><th class="r">Messages</th><th>Forward secrecy</th><th>Quantum-safe</th><th>Revocation</th></tr></thead><tbody id="cost-rows"></tbody></table></div>
   <p class="takeaway">Compute is not the problem: a few milliseconds. The cost is <b>size</b>. Post-quantum keys, signatures and certificates make a handshake about 15 KB, against under 1 KB for the classical version of the same protocol.</p>
 
@@ -161,9 +169,26 @@
   <ul class="conclusions">
     <li><b>Post-quantum cryptography is deployable now.</b> It is software on the existing on-board unit, its compute cost is a few milliseconds, and our protocol keeps every security property the published designs lacked.</li>
     <li><b>QKD behaves exactly as theory predicts, and that is its problem for vehicles.</b> It detects any eavesdropper, but needs line-of-sight optics, loses rate exponentially with distance, and still needs PQC to authenticate its classical channel.</li>
-    <li><b>Published "secure" V2V protocols fail at the design level.</b> All eight attacks succeeded, including one on a scheme that already uses a post-quantum KEM. Quantum resistance does not help if the protocol is broken.</li>
+    <li><b>The three published schemes [1–3] fail at the design level.</b> All seven attacks on them succeeded, including two on P²AS-IoAV [3], which already uses a post-quantum KEM. Quantum resistance does not help if the protocol design is broken.</li>
     <li><b>The real cost of quantum safety is bandwidth.</b> Bigger keys and signatures, not computation, limit how many vehicles a channel can serve. The broadcast layer needs redesigning, not just new algorithms.</li>
   </ul>
+</div></section>
+
+<section id="references"><div class="wrap">
+  <div class="eyebrow">References</div>
+  <h2>The schemes we analysed, and the work we built on</h2>
+  <ol class="refs">
+    <li id="ref1">M. Shariq, N. Jamil, G. S. Rawat, S. A. Chaudhry, M. Masud and A. K. Das, "Provably Secure and Reliable Privacy-Preserving Authentication Scheme for Drone-to-Drone Communications in Internet of Autonomous Things" (PSRS-D2D), <i>IEEE Transactions on Mobile Computing</i>, vol. 25, no. 1, pp. 1445–1456, Jan. 2026. <a href="https://doi.org/10.1109/TMC.2025.3601369">doi:10.1109/TMC.2025.3601369</a></li>
+    <li id="ref2">M. Shariq, I. T. Ahmed, M. Masud, A. D. E. Berini and N. Jamil, "Design of a provable secure lightweight privacy-preserving authentication protocol for autonomous vehicles in IoT systems" (PSLAP), <i>Computer Networks</i>, vol. 261, Art. no. 111155, 2025. <a href="https://doi.org/10.1016/j.comnet.2025.111155">doi:10.1016/j.comnet.2025.111155</a></li>
+    <li id="ref3">M. Shariq, N. Jamil, G. S. Rawat, A. K. Das, S. Yigezu, M. Masud and A. H. Abd Ghafar, "Anonymous and Privacy-Preserving Post-Quantum Key Encapsulation-Based Authentication Scheme for UAV-Assisted Internet of Autonomous Vehicles" (P²AS-IoAV), <i>IEEE Transactions on Vehicular Technology</i>, vol. 75, no. 10, pp. 24698–24711, Oct. 2026. <a href="https://doi.org/10.1109/TVT.2026.3698192">doi:10.1109/TVT.2026.3698192</a></li>
+    <li>C. H. Bennett and G. Brassard, "Quantum cryptography: Public key distribution and coin tossing," <i>Proc. IEEE Int. Conf. Computers, Systems and Signal Processing</i>, Bangalore, 1984.</li>
+    <li>G. Brassard and L. Salvail, "Secret-key reconciliation by public discussion" (Cascade), <i>EUROCRYPT '93</i>, LNCS 765, 1994.</li>
+    <li>P. W. Shor, "Algorithms for quantum computation: discrete logarithms and factoring," <i>Proc. 35th IEEE FOCS</i>, 1994.</li>
+    <li>NIST, FIPS 203 (ML-KEM) and FIPS 204 (ML-DSA), August 2024.</li>
+    <li>C. Cremers, "The Scyther Tool: Verification, Falsification, and Analysis of Security Protocols," <i>CAV 2008</i>.</li>
+    <li>IEEE Std 1609.2, Security Services for Applications and Management Messages in Wireless Access in Vehicular Environments.</li>
+  </ol>
+  <p class="note">The three schemes were implemented from their published text and figures. Where the text and figures disagree, both variants were implemented, and the scope notes in Part 2 state which one an attack applies to. The printing errors found while implementing them are also listed in Part 2.</p>
 </div></section>
 
 <section id="reproduce"><div class="wrap">

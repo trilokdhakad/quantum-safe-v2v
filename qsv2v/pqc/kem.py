@@ -1,4 +1,7 @@
-"""ML-KEM-768 (FIPS 203) behind one interface, with two interchangeable backends.
+"""ML-KEM (FIPS 203) behind one interface, with two interchangeable backends.
+
+ML-KEM-768 is used throughout; ML-KEM-512 (standardised Kyber-512) is available
+because P²AS-IoAV evaluates its costs with Kyber-512 (its Sec. VII-B).
 
 * ``"oqs"``      -- liboqs via liboqs-python (C, fast). Randomness from the OS.
 * ``"kyber-py"`` -- pure-Python reference implementation. Deterministic when
@@ -25,6 +28,7 @@ class KEMKeyPair:
 
 class MLKEM768:
     name = "ML-KEM-768"
+    _kyber_py = "ML_KEM_768"  # parameter set in kyber_py.ml_kem
 
     def __init__(self, backend: str = "kyber-py", rng: DeterministicRNG | None = None):
         if backend not in ("oqs", "kyber-py"):
@@ -46,9 +50,7 @@ class MLKEM768:
             with oqs.KeyEncapsulation(self.name) as kem:
                 pk = kem.generate_keypair()
                 return KEMKeyPair(pk, kem.export_secret_key())
-        from kyber_py.ml_kem import ML_KEM_768
-
-        ek, dk = ML_KEM_768._keygen_internal(self._rand(32), self._rand(32))
+        ek, dk = self._ref()._keygen_internal(self._rand(32), self._rand(32))
         return KEMKeyPair(ek, dk)
 
     def encaps(self, public_key: bytes) -> tuple[bytes, bytes]:
@@ -58,9 +60,7 @@ class MLKEM768:
 
             with oqs.KeyEncapsulation(self.name) as kem:
                 return kem.encap_secret(public_key)
-        from kyber_py.ml_kem import ML_KEM_768
-
-        ss, ct = ML_KEM_768._encaps_internal(public_key, self._rand(32))
+        ss, ct = self._ref()._encaps_internal(public_key, self._rand(32))
         return ct, ss
 
     def decaps(self, secret_key: bytes, ciphertext: bytes) -> bytes:
@@ -69,9 +69,19 @@ class MLKEM768:
 
             with oqs.KeyEncapsulation(self.name, secret_key) as kem:
                 return kem.decap_secret(ciphertext)
-        from kyber_py.ml_kem import ML_KEM_768
+        return self._ref().decaps(secret_key, ciphertext)
 
-        return ML_KEM_768.decaps(secret_key, ciphertext)
+    def _ref(self):
+        import kyber_py.ml_kem
+
+        return getattr(kyber_py.ml_kem, self._kyber_py)
+
+
+class MLKEM512(MLKEM768):
+    """ML-KEM-512 (Kyber-512): 800 B public key, 768 B ciphertext."""
+
+    name = "ML-KEM-512"
+    _kyber_py = "ML_KEM_512"
 
 
 class X25519KEM:
@@ -143,6 +153,8 @@ class X25519KEM:
 def get_kem(name: str, backend: str = "kyber-py", rng: DeterministicRNG | None = None):
     if name == "ML-KEM-768":
         return MLKEM768(backend, rng)
+    if name == "ML-KEM-512":
+        return MLKEM512(backend, rng)
     if name == "X25519":
         return X25519KEM(rng=rng)
     raise ValueError(f"unknown KEM {name!r}")

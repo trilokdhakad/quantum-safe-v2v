@@ -253,9 +253,9 @@ The deadline is 5 days, so phases run back to back and the dashboard is dropped 
 
 ## References
 
-1. M. Shariq et al., "Design of a provable secure lightweight privacy-preserving authentication protocol for autonomous vehicles in IoT systems," *Computer Networks*, vol. 261, 111155, 2025.
-2. M. Shariq et al., "Provably Secure and Reliable Privacy-Preserving Authentication Scheme for Drone-to-Drone Communications in Internet of Autonomous Things," *IEEE Trans. Mobile Computing*, vol. 25, no. 1, pp. 1445–1454, 2026.
-3. M. Shariq et al., "Anonymous and Privacy-Preserving Post-Quantum Key Encapsulation-Based Authentication Scheme for UAV-Assisted Internet of Autonomous Vehicles," *IEEE Trans. Vehicular Technology*, vol. 75, no. 10, pp. 24698–24710, 2026.
+1. M. Shariq, I. T. Ahmed, M. Masud, A. D. E. Berini and N. Jamil, "Design of a provable secure lightweight privacy-preserving authentication protocol for autonomous vehicles in IoT systems" (PSLAP), *Computer Networks*, vol. 261, Art. no. 111155, 2025. doi:10.1016/j.comnet.2025.111155
+2. M. Shariq, N. Jamil, G. S. Rawat, S. A. Chaudhry, M. Masud and A. K. Das, "Provably Secure and Reliable Privacy-Preserving Authentication Scheme for Drone-to-Drone Communications in Internet of Autonomous Things" (PSRS-D2D), *IEEE Transactions on Mobile Computing*, vol. 25, no. 1, pp. 1445–1456, Jan. 2026. doi:10.1109/TMC.2025.3601369
+3. M. Shariq, N. Jamil, G. S. Rawat, A. K. Das, S. Yigezu, M. Masud and A. H. Abd Ghafar, "Anonymous and Privacy-Preserving Post-Quantum Key Encapsulation-Based Authentication Scheme for UAV-Assisted Internet of Autonomous Vehicles" (P²AS-IoAV), *IEEE Transactions on Vehicular Technology*, vol. 75, no. 10, pp. 24698–24711, Oct. 2026. doi:10.1109/TVT.2026.3698192
 4. C. H. Bennett and G. Brassard, "Quantum cryptography: Public key distribution and coin tossing," 1984.
 5. G. Brassard and L. Salvail, "Secret-key reconciliation by public discussion" (Cascade), EUROCRYPT 1993.
 6. NIST FIPS 203 (ML-KEM) and FIPS 204 (ML-DSA), August 2024.

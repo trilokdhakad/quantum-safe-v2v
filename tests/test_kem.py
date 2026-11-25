@@ -43,3 +43,16 @@ def test_kyber_py_deterministic_with_seed():
 def test_bad_backend():
     with pytest.raises(ValueError):
         MLKEM768("nope")
+
+
+@pytest.mark.parametrize("backend", KEM_BACKENDS)
+def test_mlkem512_sizes_and_roundtrip(backend):
+    """Kyber-512 sizes as P2AS-IoAV assumes (Sec. VII-B: 6400-bit pk, 6144-bit ct)."""
+    from qsv2v.pqc.kem import MLKEM512, get_kem
+
+    k = get_kem("ML-KEM-512", backend, DeterministicRNG(4))
+    assert isinstance(k, MLKEM512)
+    kp = k.keygen()
+    ct, ss = k.encaps(kp.public_key)
+    assert len(kp.public_key) * 8 == 6400 and len(ct) * 8 == 6144
+    assert k.decaps(kp.secret_key, ct) == ss

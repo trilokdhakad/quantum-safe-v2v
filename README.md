@@ -314,7 +314,9 @@ python -m qsv2v.attacks --n21        # also Shor on N = 21 (about 2.5 minutes)
 python -m qsv2v.attacks.psrs_d2d.attacks   # one paper at a time
 ```
 
-Each protocol is implemented from the paper's own figures and equations
+The three base papers are PSRS-D2D [1], PSLAP [2] and P²AS-IoAV [3] (full
+references at the end of this README). Each protocol is implemented from the
+paper's own figures and equations
 (`protocol.py` quotes them in its docstring). Real P-256 arithmetic comes from
 `ecdsa`, and real ML-KEM-768 from liboqs or `kyber-py`. Each attack is given
 only what its threat model allows. The victim's true values are used only to
@@ -651,7 +653,7 @@ caches each simulation run under `runs/`, so a rerun only redraws.
 | E4 | Cascade leaks ~1.1–1.2× the Shannon limit | Supported | 1.14–1.19× at QBER 2–10% with k1 = 0.73/Q. k1 = 1.0/Q leaked slightly less (mean 1.14 vs 1.16). No residual errors for any block size. |
 | E5 | Every attack succeeds on the papers, fails on PQ-V2V-AKE | Supported | 40/40 attack runs on the papers succeeded (8 attacks × 5 seeds, all in under 4 s). 0/40 against PQ-V2V-AKE. |
 | E6 | PQC within the same order as ECC; signing is the slowest step | **Partly** | PQ sign/verify is 3–4× ECDSA. Signing is slower than verifying for ML-DSA and Falcon but not for ECDSA (OpenSSL). The slowest operation is Falcon key generation (~10–14 ms, once per pseudonym). |
-| E7 | Ours costs more bytes, adds forward secrecy and revocation | Supported | 14,958 B in 3 messages vs 304–2,504 B in 2 for the papers. Compute 2–5 ms (liboqs; varies with CPU speed between runs); the papers' EC steps would take 0.4–1.3 ms in OpenSSL. Only PQ-V2V-AKE has forward secrecy, revocation and quantum resistance together. |
+| E7 | Ours costs more bytes, adds forward secrecy and revocation | Supported | 14,958 B in 3 messages vs 304–1,864 B in 2 for the papers [1–3] (P²AS-IoAV with its own Kyber-512; 2,504 B with ML-KEM-768). Compute 2–5 ms (liboqs; varies with CPU speed between runs); the papers' EC steps would take 0.4–1.3 ms in OpenSSL. Only PQ-V2V-AKE has forward secrecy, revocation and quantum resistance together. |
 | E8 | ML-DSA overflows a safety message; Falcon + digest fits | Supported | ML-DSA-44: 2,665 B (2 frames). Falcon-512 + digest: about 900 B, at most 998 B with the longest possible signature. |
 | E9 | Latency under 100 ms up to a measurable density | Supported | See below. |
 | E10 | PQC deployable now; QKD strongest in theory, needs optics | Comparison | See below. |
@@ -675,7 +677,7 @@ range.
 **E10, QKD vs PQC**: a table built from E1, E3, E7, E8 and E9
 (`e10_qkd_vs_pqc/table.md`). In the optimistic fibre-like model of E3 with a
 100 MHz ideal single-photon source, QKD gives about 8 Mbit/s of key at 0 km
-and 0.8 Mbit/s at 50 km. PQ-V2V-AKE gives about 50–110 kbit/s per CPU core (depending on the CPU speed during the run) and
+and 0.8 Mbit/s at 50 km. PQ-V2V-AKE gives about 50–125 kbit/s per CPU core (depending on the CPU speed during the run) and
 works in software on today's hardware. QKD needs line-of-sight optics that
 track a car closing at up to 70 m/s. The QKD numbers are an upper bound for
 V2V, since free-space loss to a moving vehicle is larger and varies.
@@ -733,3 +735,14 @@ noise/Eve settings, a 50% sift ratio, repeatable seeds, the abort rule, and
 the key reaching zero just above 10% QBER. The lab's key length is an
 estimate, n(1 − (1 + f)h(Q)) − 131 with f = 1.16 measured in E4. The Python
 pipeline runs real Cascade and privacy amplification.
+
+## References
+
+1. M. Shariq, N. Jamil, G. S. Rawat, S. A. Chaudhry, M. Masud and A. K. Das, "Provably Secure and Reliable Privacy-Preserving Authentication Scheme for Drone-to-Drone Communications in Internet of Autonomous Things" (PSRS-D2D), *IEEE Transactions on Mobile Computing*, vol. 25, no. 1, pp. 1445–1456, Jan. 2026. doi:10.1109/TMC.2025.3601369
+2. M. Shariq, I. T. Ahmed, M. Masud, A. D. E. Berini and N. Jamil, "Design of a provable secure lightweight privacy-preserving authentication protocol for autonomous vehicles in IoT systems" (PSLAP), *Computer Networks*, vol. 261, Art. no. 111155, 2025. doi:10.1016/j.comnet.2025.111155
+3. M. Shariq, N. Jamil, G. S. Rawat, A. K. Das, S. Yigezu, M. Masud and A. H. Abd Ghafar, "Anonymous and Privacy-Preserving Post-Quantum Key Encapsulation-Based Authentication Scheme for UAV-Assisted Internet of Autonomous Vehicles" (P²AS-IoAV), *IEEE Transactions on Vehicular Technology*, vol. 75, no. 10, pp. 24698–24711, Oct. 2026. doi:10.1109/TVT.2026.3698192
+
+P²AS-IoAV evaluates its costs with Kyber-512 (its Sec. VII-B). Our attacks use
+ML-KEM-768; the attacks do not depend on the parameter set. E7 measures P²AS-IoAV
+with both: 1,864 B per handshake with ML-KEM-512, against the paper's own
+14,144 bits (1,768 B) for its vehicle–drone exchange.

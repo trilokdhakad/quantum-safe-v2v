@@ -30,9 +30,15 @@ from qsv2v.pqc.kem import MLKEM768
 PAPER = "P2AS-IoAV (IEEE TVT 2026)"
 
 
-def make_network(seed: int, n_av: int, n_dr: int, kem_backend: str = "kyber-py"):
+def make_network(
+    seed: int, n_av: int, n_dr: int, kem_backend: str = "kyber-py", kem_alg: str = "ML-KEM-768"
+):
+    """kem_alg: ML-KEM-768 (default, as in the attacks) or ML-KEM-512, the Kyber-512
+    parameter set the paper uses for its cost evaluation (Sec. VII-B)."""
+    from qsv2v.pqc.kem import get_kem
+
     rng = DeterministicRNG(seed)
-    kem = MLKEM768(kem_backend, rng=rng.fork("kem"))
+    kem = get_kem(kem_alg, kem_backend, rng.fork("kem"))
     ta = P.setup(kem)
     avs = [P.register(ta, rng) for _ in range(n_av)]
     drs = [P.register(ta, rng) for _ in range(n_dr)]
