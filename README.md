@@ -10,7 +10,7 @@ post-quantum cryptography (ML-KEM / ML-DSA). The project plan is in
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 1 | Repo setup, BB84 core (Qiskit Aer + NumPy backends) | Done |
-| 2 | Channel noise, photon loss, intercept-resend Eve | Not started |
+| 2 | Channel noise, photon loss, intercept-resend Eve | Done |
 | 3 | Cascade, privacy amplification | Not started |
 | 4 | Attacks on the three base papers | Not started |
 | 5 | PQ-V2V-AKE protocol | Not started |
@@ -36,7 +36,11 @@ pytest -q
 qsv2v/
 ├── qkd/            BB84 simulator
 │   ├── states.py       QubitBatch: bits + bases (+ detection mask) in flight
-│   ├── channel.py      QuantumChannel (ideal in Phase 1; noise/loss/Eve hook)
+│   ├── channel.py      QuantumChannel: Eve -> loss + dark counts -> Pauli noise
+│   ├── noise.py        PauliNoise (bit-flip, phase-flip, depolarising, general)
+│   ├── eve.py          InterceptResendEve (attacks a chosen fraction of photons)
+│   ├── estimation.py   QBER on a disclosed random sample; abort rule
+│   ├── theory.py       closed-form expected QBER, binary entropy, key rate
 │   ├── bb84.py         prepare -> transmit -> measure -> sift; BB84Result
 │   └── backends/       numpy_backend.py, qiskit_backend.py
 ├── attacks/  pqc/  sim/   later phases
@@ -79,3 +83,100 @@ ideal channel the sifted keys match 100%, and the sift ratio is within 4σ of
 0.5. It also checks that each of the four BB84 states reads back correctly,
 that measuring in the other basis gives uniform outcomes, that the two
 backends agree statistically, and that runs repeat exactly under a fixed seed.
+
+## Channel realism and the eavesdropper (Phase 2)
+
+```python
+from qsv2v.qkd import (
+    QuantumChannel,
+    PauliNoise,
+    InterceptResendEve,
+    run_bb84,
+    estimate_qber,
+    should_abort,
+    expected_qber,
+)
+import numpy as np
+
+ch = QuantumChannel(
+    noise=PauliNoise.from_qber(0.03),  # or bit_flip(p), phase_flip(p), depolarizing(p)
+    distance_km=20,
+    attenuation_db_per_km=0.2,
+    detector_efficiency=0.8,
+    dark_count_prob=1e-5,
+    eve=InterceptResendEve(fraction=0.5),
+)
+res = run_bb84(100_000, channel=ch, seed=1)
+est = estimate_qber(res.alice_key, res.bob_key, np.random.default_rng(2), sample_fraction=0.1)
+print(est.qber, should_abort(est), expected_qber(ch.noise, 0.5, ch.eta, 1e-5))
+```
+
+Channel model, in order along the link:
+
+1. **Eve** (optional) sits at Alice's output. She attacks each photon with
+   probability `fraction`: she measures it in a random basis on the same
+   backend Bob uses (a real circuit on Qiskit) and resends her result in her
+   basis.
+2. **Loss**: the photon survives with η = 10^(−α·d/10) × detector efficiency.
+3. **Dark counts**: a lost photon still gives a click with probability
+   `dark_count_prob`, and that click's outcome is random.
+4. **Noise**: a Pauli channel. On Qiskit it is an Aer `pauli_error` inside the
+   circuit; NumPy samples the same Paulis. X and Y flip rectilinear states; Z
+   and Y flip diagonal ones.
+
+**Expected QBER.** With noise error e (per basis) and Eve fraction f, the error
+rate on sifted bits is
+
+  Q = e + f/4 − f·e/2
+
+The plan's "noise + 0.25 × f" is the first-order form. The −f·e/2 cross term
+is real: when Eve guesses the wrong basis, Bob's result is already random, so
+noise cannot add errors to those bits. At e = 8% and f = 1 the linear form
+overestimates by 4 points, about 30σ at 100k sifted bits. The tests check that
+the simulator follows the exact form and not the linear one. Dark counts add
+random-outcome clicks:
+Q = [η·Q_sig + (1−η)·p_d/2] / [η + (1−η)·p_d].
+
+**Abort rule.** Alice and Bob disclose a random sample of the sifted key (10%
+by default) and abort if the sampled QBER exceeds 11%, where the Shor–Preskill
+key rate reaches zero. A pure intercept-resend attack is caught when it
+touches more than about 44% of photons (0.11 / 0.25).
+
+### Phase 2 results (measured, NumPy, 200,000 photons, seed 20261125)
+
+Depolarising noise e × Eve fraction f. z = (measured − exact) / σ.
+
+| e | f | Measured QBER | Exact Q | Linear e + f/4 | z |
+| --- | --- | --- | --- | --- | --- |
+| 0.00 | 0.00 | 0.0000 | 0.0000 | 0.0000 | — |
+| 0.00 | 0.25 | 0.0612 | 0.0625 | 0.0625 | −1.66 |
+| 0.00 | 0.50 | 0.1253 | 0.1250 | 0.1250 | +0.25 |
+| 0.00 | 0.75 | 0.1868 | 0.1875 | 0.1875 | −0.56 |
+| 0.00 | 1.00 | 0.2495 | 0.2500 | 0.2500 | −0.37 |
+| 0.02 | 0.00 | 0.0198 | 0.0200 | 0.0200 | −0.36 |
+| 0.02 | 0.25 | 0.0793 | 0.0800 | 0.0825 | −0.83 |
+| 0.02 | 0.50 | 0.1394 | 0.1400 | 0.1450 | −0.54 |
+| 0.02 | 0.75 | 0.1997 | 0.2000 | 0.2075 | −0.25 |
+| 0.02 | 1.00 | 0.2604 | 0.2600 | 0.2700 | +0.28 |
+| 0.05 | 0.00 | 0.0492 | 0.0500 | 0.0500 | −1.09 |
+| 0.05 | 0.25 | 0.1049 | 0.1062 | 0.1125 | −1.37 |
+| 0.05 | 0.50 | 0.1620 | 0.1625 | 0.1750 | −0.45 |
+| 0.05 | 0.75 | 0.2184 | 0.2188 | 0.2375 | −0.30 |
+| 0.05 | 1.00 | 0.2750 | 0.2750 | 0.3000 | −0.03 |
+| 0.08 | 0.00 | 0.0780 | 0.0800 | 0.0800 | −2.31 |
+| 0.08 | 0.25 | 0.1314 | 0.1325 | 0.1425 | −1.02 |
+| 0.08 | 0.50 | 0.1842 | 0.1850 | 0.2050 | −0.64 |
+| 0.08 | 0.75 | 0.2375 | 0.2375 | 0.2675 | +0.00 |
+| 0.08 | 1.00 | 0.2899 | 0.2900 | 0.3300 | −0.04 |
+
+All rows use one seed, so their errors are correlated, which is why most z
+values share a sign. Over 30 independent seeds the mean z is −0.30 to +0.15
+(standard error 0.18) and the spread of z is 0.87–1.06. That is no detectable
+bias.
+
+The test suite checks the Phase 2 "done when" criterion over **32 settings**:
+26 on NumPy (these 20, plus bit-flip noise and lossy links with dark counts at
+50 and 100 km) and 6 on Qiskit Aer with in-circuit noise. Each must fall
+within 4σ of the exact formula. Further tests cover detection rate vs η, Eve's
+statistics, and abort / no-abort on either side of the ~44% interception
+threshold.

@@ -88,3 +88,102 @@ def test_sift_mask():
         False,
         False,
     ]
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 "done when": measured QBER matches theory across 20+ channel settings
+# ---------------------------------------------------------------------------
+from qsv2v.qkd.backends import NumpyBackend, QiskitAerBackend  # noqa: E402
+from qsv2v.qkd.channel import QuantumChannel  # noqa: E402
+from qsv2v.qkd.estimation import estimate_qber, should_abort  # noqa: E402
+from qsv2v.qkd.eve import InterceptResendEve  # noqa: E402
+from qsv2v.qkd.noise import PauliNoise  # noqa: E402
+from qsv2v.qkd.theory import expected_qber  # noqa: E402
+
+
+def _channel(noise, f, distance=0.0, dark=0.0):
+    return QuantumChannel(
+        noise=noise,
+        eve=InterceptResendEve(f) if f > 0 else None,
+        distance_km=distance,
+        dark_count_prob=dark,
+    )
+
+
+# (label, noise, eve fraction, distance km, dark count prob)
+QBER_SETTINGS = (
+    [
+        (f"depol e={e} f={f}", PauliNoise.from_qber(e) if e else None, f, 0.0, 0.0)
+        for e in (0.0, 0.02, 0.05, 0.08)
+        for f in (0.0, 0.25, 0.5, 0.75, 1.0)
+    ]
+    + [
+        (f"bitflip p={p} f={f}", PauliNoise.bit_flip(p), f, 0.0, 0.0)
+        for p in (0.04, 0.1)
+        for f in (0.5, 1.0)
+    ]
+    + [
+        ("lossy 50km + dark 1e-3, e=0.03", PauliNoise.from_qber(0.03), 0.0, 50.0, 1e-3),
+        ("lossy 100km + dark 1e-3, f=0.5", None, 0.5, 100.0, 1e-3),
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    "label,noise,f,distance,dark", QBER_SETTINGS, ids=[s[0] for s in QBER_SETTINGS]
+)
+def test_qber_matches_theory_numpy(label, noise, f, distance, dark):
+    ch = _channel(noise, f, distance, dark)
+    # Aim for ~100k sifted bits whatever the loss.
+    n = int(200_000 / (ch.eta + (1 - ch.eta) * dark))
+    res = run_bb84(n, backend=NumpyBackend(), channel=ch, seed=SEED)
+    q_theory = expected_qber(noise, f, ch.eta, dark)
+    assert res.sifted_length > 50_000
+    assert within_sigmas(res.qber, q_theory, res.sifted_length), (res.qber, q_theory)
+
+
+QISKIT_SETTINGS = [
+    (PauliNoise.from_qber(0.0), 0.0),
+    (PauliNoise.from_qber(0.05), 0.0),
+    (None, 0.5),
+    (None, 1.0),
+    (PauliNoise.from_qber(0.05), 0.5),
+    (PauliNoise.bit_flip(0.1), 1.0),
+]
+
+
+@pytest.mark.parametrize("noise,f", QISKIT_SETTINGS)
+def test_qber_matches_theory_qiskit(noise, f):
+    n = 6000
+    res = run_bb84(n, backend=QiskitAerBackend(), channel=_channel(noise, f), seed=SEED)
+    q_theory = expected_qber(noise, f)
+    assert within_sigmas(res.qber, q_theory, res.sifted_length), (res.qber, q_theory)
+
+
+def test_linear_approximation_cross_term_is_real():
+    """The plan's 'noise + 0.25 f' omits -f e/2; at e=8%, f=1 that is 4 points."""
+    noise, f = PauliNoise.from_qber(0.08), 1.0
+    res = run_bb84(200_000, channel=_channel(noise, f), seed=SEED)
+    sigma = np.sqrt(res.qber * (1 - res.qber) / res.sifted_length)
+    assert within_sigmas(res.qber, 0.08 + 0.25 - 0.04, res.sifted_length)
+    assert abs(res.qber - (0.08 + 0.25)) > 10 * sigma
+
+
+def test_detection_rate_matches_loss():
+    ch = _channel(None, 0.0, distance=25.0, dark=1e-3)
+    res = run_bb84(200_000, channel=ch, seed=SEED)
+    p = ch.eta + (1 - ch.eta) * 1e-3
+    assert within_sigmas(res.detection_rate, p, 200_000)
+    assert within_sigmas(res.sift_ratio, p / 2, 200_000)
+
+
+@pytest.mark.parametrize(
+    "f,expect_abort",
+    [(0.0, False), (0.2, False), (0.3, False), (0.6, True), (0.8, True), (1.0, True)],
+)
+def test_eve_detection_and_abort(f, expect_abort):
+    """Abort above 11% sampled QBER: expected beyond ~44% interception (0.11/0.25)."""
+    res = run_bb84(40_000, channel=_channel(None, f), seed=SEED)
+    est = estimate_qber(res.alice_key, res.bob_key, np.random.default_rng(1), 0.1)
+    assert should_abort(est) is expect_abort
+    assert within_sigmas(est.qber, 0.25 * f, est.n_sample)

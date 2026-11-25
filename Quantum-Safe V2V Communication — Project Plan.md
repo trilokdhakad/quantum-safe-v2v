@@ -208,10 +208,10 @@ The deadline is 5 days, so phases run back to back and the dashboard is dropped 
 **Schedule (weeks):**
 
 1. Day 1 — Phases 1–3: repo, BB84 on Qiskit + NumPy, noise, loss, Eve, Cascade, privacy amplification, tests
-2. Day 2 — Phase 4: toy implementations of the three papers + all attack scripts + Shor demo
-3. Day 3 — Phase 5: PQ-V2V-AKE protocol, broadcast signing, Scyther model
-4. Day 4 — Phases 6–7: V2V network simulation, run E1–E10, figures
-5. Day 5 — Phase 9: report, README, slides; Phase 8 dashboard only if time allows
+2.  Day 2 — Phase 4: reference implementations of the three papers as baselines + attack scripts + Shor demo (kept to one day: it is evidence, not the contribution)
+3.  Day 3 — Phase 5: PQ-V2V-AKE protocol, broadcast signing, Scyther model
+4.  Day 4 — Phases 6–7: V2V network simulation, run E1–E10, figures
+5.  Day 5 — Phase 9: report, README, slides; Phase 8 dashboard only if time allows
 
 **Team split (suggested):**
 

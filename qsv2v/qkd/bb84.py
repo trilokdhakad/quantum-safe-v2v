@@ -11,7 +11,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from qsv2v.qkd.backends import MeasurementBackend, NumpyBackend
-from qsv2v.qkd.channel import QuantumChannel
+from qsv2v.qkd.channel import QuantumChannel, Transmission
+from qsv2v.qkd.eve import EveRecord
 from qsv2v.qkd.states import QubitBatch
 
 
@@ -42,6 +43,15 @@ class BB84Result:
     bob_results: np.ndarray
     detected: np.ndarray
     sift_mask: np.ndarray
+    transmission: Transmission | None = None
+
+    @property
+    def eve(self) -> EveRecord | None:
+        return self.transmission.eve if self.transmission else None
+
+    @property
+    def detection_rate(self) -> float:
+        return float(self.detected.mean()) if self.n_sent else 0.0
 
     @property
     def n_sent(self) -> int:
@@ -91,15 +101,16 @@ def run_bb84(
     channel = channel or QuantumChannel()
 
     sent = prepare(n, rng)
-    received = channel.transmit(sent, rng)
+    tx = channel.transmit(sent, rng, backend)
     bob_bases = rng.integers(0, 2, size=n, dtype=np.uint8)
-    bob_results = backend.measure(received, bob_bases, rng)
-    mask = sift(sent.bases, bob_bases, received.detected)
+    bob_results = backend.measure(tx.received, bob_bases, rng, noise=tx.noise)
+    mask = sift(sent.bases, bob_bases, tx.received.detected)
     return BB84Result(
         alice_bits=sent.bits,
         alice_bases=sent.bases,
         bob_bases=bob_bases,
         bob_results=bob_results,
-        detected=received.detected,
+        detected=tx.received.detected,
         sift_mask=mask,
+        transmission=tx,
     )
