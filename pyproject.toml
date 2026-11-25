@@ -18,6 +18,8 @@ dependencies = [
     "kyber-py>=1.0",
     "dilithium-py>=1.0",
     "simpy>=4.0",
+    "scipy>=1.11",
+    "matplotlib>=3.8",
 ]
 
 [project.optional-dependencies]

@@ -251,13 +251,36 @@ def mitm_swap(seed: int = 5) -> DefenseResult:
 
 
 # 6. Linking sessions -----------------------------------------------------------
-def linking(seed: int = 6, window: int = 16) -> DefenseResult:
+def _novel(cands: set[bytes], background: bytes, window: int, min_new: int) -> set[bytes]:
+    """Windows in ``cands`` that differ in >= min_new bytes from every window of background."""
+    import numpy as np
+
+    if not cands:
+        return set()
+    bg = np.lib.stride_tricks.sliding_window_view(np.frombuffer(background, np.uint8), window)
+    out = set()
+    for w in cands:
+        dist = (bg != np.frombuffer(w, np.uint8)).sum(axis=1)
+        if dist.min() >= min_new:
+            out.add(w)
+    return out
+
+
+def linking(seed: int = 6, window: int = 16, min_new: int = 8) -> DefenseResult:
     """Does anything in a vehicle's messages single it out across pseudonyms?
 
     A byte window links two sessions only if it appears in both of one vehicle's
     sessions (different pseudonyms) but NOT in another vehicle's session: shared
     format bytes and the zero runs at the end of every ML-DSA signature appear
-    in everyone's messages and identify no one.
+    in everyone's messages and identify no one. Candidates must look random (at
+    least 8 distinct byte values in the window; a random identifier always does,
+    padding never does), and "absent" means at least
+    ``min_new`` bytes (64 bits) differ from EVERY window of the other vehicle's
+    message: a real identifier (pseudonym, key) is new in all 16 bytes, whereas a
+    window that straddles a fixed format field and one random byte, or ML-DSA's
+    zero-padded hint counters, matches another vehicle's window up to 1-2 bytes
+    by chance. (E5 re-ran this test with 5 new seeds; the earlier exact-match
+    rule flagged such 1-in-256 coincidences in 2 of them.)
     """
     net = A.setup_network(3, seed, n_pseudonyms=2, lifetime=300)
     v0, v1, v2 = net.vehicles
@@ -275,16 +298,25 @@ def linking(seed: int = 6, window: int = 16) -> DefenseResult:
     )
 
     def windows(b: bytes) -> set[bytes]:
-        return {b[i : i + window] for i in range(0, max(len(b) - window + 1, 0))}
+        return {
+            w
+            for i in range(0, max(len(b) - window + 1, 0))
+            if len(set(w := b[i : i + window])) >= 8
+        }
 
     with Timer() as t:
         common = windows(s1.m1.encode()) & windows(s2.m1.encode())
-        distinguishing = common - windows(other.m1.encode())
+        distinguishing = _novel(common, other.m1.encode(), window, min_new)
         cert1, cert2 = PseudonymCert.decode(s1.m1.cert), PseudonymCert.decode(s2.m1.cert)
         id_fields_equal = cert1.pseudonym == cert2.pseudonym or cert1.public_key == cert2.public_key
         same_window_linked = s1.m1.cert == s_same.m1.cert
         control_hits = len(
-            (windows(s1.m1.encode()) & windows(s_same.m1.encode())) - windows(other.m1.encode())
+            _novel(
+                windows(s1.m1.encode()) & windows(s_same.m1.encode()),
+                other.m1.encode(),
+                window,
+                min_new,
+            )
         )
     res.elapsed_s = t.elapsed
     res.blocked = not id_fields_equal and not distinguishing and control_hits > 0

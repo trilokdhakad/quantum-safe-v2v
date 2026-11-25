@@ -15,7 +15,7 @@ post-quantum cryptography (ML-KEM / ML-DSA). The project plan is in
 | 4 | Attacks on the three base papers | Done |
 | 5 | PQ-V2V-AKE protocol | Done |
 | 6 | V2V network simulation | Done |
-| 7 | Experiments E1–E10 | Not started |
+| 7 | Experiments E1–E10 | Done |
 | 8 | Dashboard (optional) | Not started |
 | 9 | Report | Not started |
 
@@ -66,9 +66,13 @@ qsv2v/
 │   ├── network.py      safety messages, handshakes, metrics, replay traces
 │   ├── profiles.py     measured sizes and timings per protocol
 │   └── __main__.py     python -m qsv2v.sim -> results/sim/*.csv
+├── experiments/    E1-E10, one script each; python -m qsv2v.experiments runs them all
+│   ├── common.py       mean + 95% CI, Wilson intervals, CSV / Markdown / figure output
+│   └── e01_eve_detection.py ... e10_qkd_vs_pqc.py
 verification/       Scyther model of PQ-V2V-AKE
 scripts/            build_showcase_data.py (progress-page datasets), run_steady_sweep.py
-experiments/  verification/  dashboard/  results/  docs/
+dashboard/  docs/       (later phases)
+results/            generated CSVs and figures (git-ignored; regenerate with the commands)
 tests/              pytest suite, one file per module
 ```
 
@@ -538,6 +542,11 @@ the latency floor on an empty channel (sum of frame airtimes).
 
 ### Results (measured; `results/sim/`)
 
+> Superseded for the report by E9 in Phase 7 (5 seeds per point, 95% CIs):
+> with more seeds, PQ-ML-DSA's every-neighbour limit moved from 25 to 50
+> vehicles (its median at 50 is 95 ± 33 ms, right at the budget). The tables
+> below are the original 2-seed Phase 6 runs.
+
 Density is quoted as vehicles on the 2 km, 6-lane road: 50 vehicles is
 4.2 vehicles per km per lane, 100 is 8.3, 200 is 16.7.
 
@@ -607,3 +616,83 @@ received *and* verified within 300 m):
   busiest crypto processor in any steady-state run was 1.5% busy.
 - **No SUMO traces.** The plan's stretch goal of SUMO mobility traces was not
   attempted; the built-in highway model was used, as the risk table allowed.
+
+## Experiments E1–E10 (Phase 7)
+
+```bash
+python -m qsv2v.experiments                 # all ten; ~6 min, plus ~1.5 h the first time for E9's sweep
+python -m qsv2v.experiments --only e03 e07  # a subset
+python -m qsv2v.experiments --quick         # smoke-test settings (numbers not report quality)
+python -m qsv2v.experiments --fresh         # also re-simulate E9's cached runs
+```
+
+One command regenerates every report figure and table. Each experiment
+writes `results/experiments/eNN_name/` with `data.csv` (every run),
+`summary.csv` (means with 95% CIs), `table.md`, `result.json` (finding and
+verdict) and `figure.png/pdf`. All figures are also copied to
+`results/experiments/figures/`, and `results/experiments/SUMMARY.md` lists
+every hypothesis with its verdict. Seeds are fixed throughout. Repeated runs
+give means with t-based 95% CIs, and proportions use Wilson intervals. E9
+caches each simulation run under `runs/`, so a rerun only redraws.
+
+### Verdicts (measured)
+
+| # | Hypothesis | Verdict | Finding |
+| --- | --- | --- | --- |
+| E1 | QBER ~linear to ~25%; abort beyond ~44% interception | Supported | QBER 24.9% at full interception; half the runs abort at 43% (theory 44%). 2% noise moves the abort point to 38%. 10 seeds × 21 fractions × 2 noise levels, full pipeline. |
+| E2 | Key reaches zero near 9.7% QBER (11% for a perfect code) | Supported | Zero at **10.0%** QBER (0.5% grid, Cascade f = 1.19). 0 of 310 runs ended with mismatched keys. |
+| E3 | Key rate decays exponentially with distance | Supported | 0.20 dB/km, the same as the fibre loss, up to 120 km. Dark counts end the key at 190 km (20% detectors, 10⁻⁵ dark counts). |
+| E4 | Cascade leaks ~1.1–1.2× the Shannon limit | Supported | 1.14–1.19× at QBER 2–10% with k1 = 0.73/Q. k1 = 1.0/Q leaked slightly less (mean 1.14 vs 1.16). No residual errors for any block size. |
+| E5 | Every attack succeeds on the papers, fails on PQ-V2V-AKE | Supported | 40/40 attack runs on the papers succeeded (8 attacks × 5 seeds, all in under 4 s). 0/40 against PQ-V2V-AKE. |
+| E6 | PQC within the same order as ECC; signing is the slowest step | **Partly** | PQ sign/verify is 3–4× ECDSA. Signing is slower than verifying for ML-DSA and Falcon but not for ECDSA (OpenSSL). The slowest operation is Falcon key generation (~10–14 ms, once per pseudonym). |
+| E7 | Ours costs more bytes, adds forward secrecy and revocation | Supported | 14,958 B in 3 messages vs 304–2,504 B in 2 for the papers. Compute about 4 ms (liboqs); the papers' EC steps would take about 1 ms in OpenSSL. Only PQ-V2V-AKE has forward secrecy, revocation and quantum resistance together. |
+| E8 | ML-DSA overflows a safety message; Falcon + digest fits | Supported | ML-DSA-44: 2,665 B (2 frames). Falcon-512 + digest: about 900 B, at most 998 B with the longest possible signature. |
+| E9 | Latency under 100 ms up to a measurable density | Supported | See below. |
+| E10 | PQC deployable now; QKD strongest in theory, needs optics | Comparison | See below. |
+
+**E9, network scale** (12 s runs, first 6 s discarded, 5 seeds per point,
+315 runs). Largest density whose mean median handshake latency is ≤ 100 ms:
+
+| Sessions | Classical | PQ-Falcon | PQ-ML-DSA |
+| --- | --- | --- | --- |
+| Every neighbour | 100 | 50 | 50 (95 ± 33 ms; 25 if the upper CI must be under 100) |
+| Same direction only | 150 (97 ± 23 ms; 50 by the upper CI) | 100 (95 ± 41 ms; 50 by the upper CI) | 50 |
+
+Safety messages only (no handshakes), share received and verified within
+300 m: 87 / 84 / 73% for ECDSA at 50 / 100 / 200 vehicles, 74 / 54 / 27% for
+Falcon-512 and 40 / 10 / 3% for ML-DSA-44, with the channel 83–99% busy
+under ML-DSA. Speed at 50 vehicles (middle lane 54 → 162 km/h): classical
+handshake success stays at 95–97%, Falcon falls from 97% to 88%, ML-DSA from
+79% to 60% (wide CIs). Faster traffic gives larger handshakes less time in
+range.
+
+**E10, QKD vs PQC**: a table built from E1, E3, E7, E8 and E9
+(`e10_qkd_vs_pqc/table.md`). In the optimistic fibre-like model of E3 with a
+100 MHz ideal single-photon source, QKD gives about 8 Mbit/s of key at 0 km
+and 0.8 Mbit/s at 50 km. PQ-V2V-AKE gives about 55–65 kbit/s per CPU core and
+works in software on today's hardware. QKD needs line-of-sight optics that
+track a car closing at up to 70 m/s. The QKD numbers are an upper bound for
+V2V, since free-space loss to a moving vehicle is larger and varies.
+
+### Corrections made while running the experiments
+
+- **Phase 5 linking test: false positives.** E5 reran the defence tests with
+  new seeds, and the linking test reported 2 of 40 runs as "linked". The
+  shared byte windows were not identifiers. They were chance matches: ML-DSA's
+  zero-padded hint counters, and single random bytes next to fixed format
+  fields, each about a 1-in-256 coincidence. The rule now counts a window only
+  if it looks random (at least 8 distinct byte values) and differs in at
+  least 8 bytes from every window of another vehicle's message. It passes 100
+  of 100 seeds, and the positive control still finds about 3,700 identifying
+  windows under one pseudonym. Regression tests cover the failing seeds and
+  check that a planted 16-byte identifier is still caught.
+- **E9 limits.** At 10 vehicles with same-direction sessions, every
+  handshake finishes during warm-up, so the window holds no latency data. The
+  budget rule now skips such points instead of stopping at them.
+- **Phase 6 limits revised.** The 5-seed results move PQ-ML-DSA's
+  every-neighbour limit from 25 to 50 vehicles. Several limits sit right at
+  100 ms, so the report should quote the CIs.
+- **Laptop timings vary.** Laptop timings (E6, E7) vary by about ±30% between
+  full runs (CPU frequency scaling). The verdicts do not change, but quote the
+  CIs.
+- **Raspberry Pi.** E6 on a Raspberry Pi was not done (no device).

@@ -170,6 +170,7 @@ Nine phases, each ending with working, tested code before the next starts; Phase
 - **Why:** results are what the report is graded on.
 - **How:** one script per experiment, fixed random seeds, repeated runs with mean and 95% confidence intervals, Matplotlib figures saved to `results/`.
 - **Done when:** every figure in the report can be regenerated with one command.
+- **Outcome (done):** `python -m qsv2v.experiments` regenerates all ten experiments: 12 figures (PNG and PDF), tables, CSVs and `results/experiments/SUMMARY.md`, with fixed seeds and 95% CIs. Verdicts: E1–E5 and E7–E9 supported; E6 partly (PQ signing and verifying are 3–4× ECDSA, but ECDSA signs faster than it verifies and Falcon keygen is the slowest operation); E10 is a comparison. Revised numbers: the E2 zero-key point is 10.0% QBER; E9 with 5 seeds gives 100 / 50 / 50 vehicles (classical / Falcon / ML-DSA, every neighbour) and 150 / 100 / 50 (same direction), several right at 100 ms, so quote the CIs. Speed sweep added. Correction: the Phase 5 linking test had chance-coincidence false positives on new seeds (ML-DSA zero padding, single bytes next to format fields). The rule now requires random-looking windows that differ in 8 or more bytes from another vehicle's; it passes 100/100 seeds and its positive control still detects linkable traffic. No Raspberry Pi timings.
 
 ### Phase 8 — Dashboard (optional)
 
@@ -188,14 +189,14 @@ Ten experiments make up the results chapter; each produces one figure or table.
 | # | Experiment | Varies | Measures | Hypothesis (to test) |
 | --- | --- | --- | --- | --- |
 | E1 | Eavesdropper detection | Eve's intercept fraction 0–100% | QBER, abort rate | QBER rises \~linearly to \~25%; abort beyond \~44% interception |
-| E2 | Channel noise | Noise 0–15% | QBER, final key length | Key length falls to zero near 9.7% QBER with Cascade (11% with a perfect code); measured in Phase 3 |
+| E2 | Channel noise | Noise 0–15% | QBER, final key length | Key length falls to zero near 9.7% QBER with Cascade (11% with a perfect code); Phase 7 measured 10.0% |
 | E3 | Distance / loss | Link distance | Detection rate, secret key rate | Key rate decays exponentially with distance |
 | E4 | Error-correction efficiency | QBER, block size | Bits leaked vs Shannon limit | Cascade leaks \~1.1–1.2× the limit |
 | E5 | Attack success | Each base paper | Secret recovered? time taken | Every listed attack succeeds on the paper, fails on PQ-V2V-AKE |
 | E6 | Crypto timing | ECDH, ECDSA, ML-KEM, ML-DSA, Falcon | ms per operation (laptop; Raspberry Pi if available) | PQC is within the same order as ECC; signing is the slowest step |
 | E7 | Handshake cost | PSLAP, PSRS-D2D, P²AS-IoAV, PQ-V2V-AKE (+ hybrid) | Total compute (ms), bytes on air, round trips | Ours costs more bytes, adds forward secrecy and revocation |
 | E8 | Message size vs packet limit | Signature scheme | Bytes per safety message | ML-DSA alone overflows a BSM; Falcon + certificate digest fits |
-| E9 | Network scale | 10–200 vehicles, speed, density | Handshake latency, channel load, success rate | Latency stays under the 100 ms budget up to a measurable density (Phase 6 measured: 100 / 50 / 25 vehicles for classical / Falcon / ML-DSA) |
+| E9 | Network scale | 10–200 vehicles, speed, density | Handshake latency, channel load, success rate | Latency stays under the 100 ms budget up to a measurable density (Phase 7, 5 seeds: 100 / 50 / 50 vehicles for classical / Falcon / ML-DSA; ML-DSA at 50 is 95 ± 33 ms) |
 | E10 | QKD vs PQC | Both approaches in V2V | Security basis, key rate, hardware needs, practicality | PQC is deployable now; QKD is strongest in theory but needs line-of-sight optics |
 
 **Security evaluation** (not experiments, but part of the results): formal verification output from Scyther/Tamarin, and a feature comparison table of all four protocols (mutual authentication, anonymity, unlinkability, forward secrecy, quantum resistance, revocation, capture resistance).
@@ -224,7 +225,7 @@ The deadline is 5 days, so phases run back to back and the dashboard is dropped 
 1. Day 1 — Phases 1–3: repo, BB84 on Qiskit + NumPy, noise, loss, Eve, Cascade, privacy amplification, tests **(done; Phase 4 also finished on Day 1)**
 2.  Day 2 — Phase 4: reference implementations of the three papers as baselines + attack scripts + Shor demo (kept to one day: it is evidence, not the contribution) **(done early; Day 2 now starts Phase 5)**
 3.  Day 3 — Phase 5: PQ-V2V-AKE protocol, broadcast signing, Scyther model **(done on Day 1)**
-4.  Day 4 — Phases 6–7: V2V network simulation, run E1–E10, figures **(Phase 6 done on Day 1)**
+4.  Day 4 — Phases 6–7: V2V network simulation, run E1–E10, figures **(Phase 6 done on Day 1; Phase 7 done on Day 1)**
 5.  Day 5 — Phase 9: report, README, slides; Phase 8 dashboard only if time allows
 
 **Team split (suggested):**
