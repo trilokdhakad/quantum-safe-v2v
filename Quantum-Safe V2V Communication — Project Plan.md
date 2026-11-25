@@ -114,6 +114,7 @@ Nine phases, each ending with working, tested code before the next starts; Phase
 - **Why:** every later QKD result depends on this being correct.
 - **How:** `|0⟩`/`|1⟩` for the + basis, apply a Hadamard for the × basis; Bob applies H before measuring when he picks ×. Batch many qubits per circuit for speed. Also a fast NumPy backend that gives the same statistics, for large runs.
 - **Done when:** with no noise and no Eve, the sifted keys match 100%; about 50% of bits survive sifting; unit tests pass on both backends.
+- **Outcome (done, commit 3374eab):** sifted keys match 100% on both backends; sift ratio 0.5000 (NumPy, 10⁶ photons) and 0.5007 (Qiskit Aer, 2·10⁴).
 
 ### Phase 2 — Channel realism and the eavesdropper
 
@@ -121,6 +122,7 @@ Nine phases, each ending with working, tested code before the next starts; Phase
 - **Why:** without noise and attacks, QKD has nothing to show; detecting Eve is the headline result.
 - **How:** Qiskit noise models (or random flips in NumPy); transmittance η = 10^(−α·d/10) for loss; Eve measures in a random basis and resends what she saw.
 - **Done when:** measured QBER ≈ noise + 0.25 × (Eve's fraction), within statistical error, across 20+ settings.
+- **Outcome (done, commit 22c889e):** met over 32 settings on both backends. Correction: the exact relation is Q = e + f/4 − f·e/2; "noise + 0.25 × f" is its first-order form and overestimates by up to 4 points at high noise. Use the exact form in the report.
 
 ### Phase 3 — Post-processing to a final key
 
@@ -128,6 +130,7 @@ Nine phases, each ending with working, tested code before the next starts; Phase
 - **Why:** a raw sifted key with errors is useless; this turns it into a usable secret.
 - **How:** Cascade with 4 passes, block size ≈ 0.73/QBER doubling each pass, random shuffles between passes, counting every leaked parity bit. Final length ≈ n·(1 − h(Q)) − leaked − security margin, where h is binary entropy. Toeplitz matrix over GF(2) from a shared random seed.
 - **Done when:** Alice's and Bob's final keys are identical in ≥ 99% of runs below threshold; secret key rate vs QBER matches the theoretical curve shape.
+- **Outcome (done, commit 20e4314):** no run ever produced mismatched keys; 100% identical keys below 9% QBER; key fraction within 0.004 of 1 − (1+f)·h(Q). Cascade leaks f ≈ 1.13–1.20 × the Shannon limit, so the key reaches zero near **9.7%** QBER, not 11% (11% is the Shor–Preskill limit for a perfect code). Team decision: report figures use the asymptotic privacy-amplification mode.
 
 ### Phase 4 — Attacks on the three base papers
 
@@ -135,13 +138,22 @@ Nine phases, each ending with working, tested code before the next starts; Phase
 - **Why:** this is the project's original contribution and the justification for Phase 5.
 - **How:** real elliptic-curve math via the `cryptography` / `ecdsa` library; Kyber via `liboqs-python`. Attacks: PSRS-D2D session-key recovery from known IDs; PSRS-D2D forward-secrecy break after one drone capture; PSRS-D2D master-key extraction from two captured certificates (solve two linear equations mod q); PSLAP session linking from the static pseudo-identity; PSLAP offline password guessing from onboard-unit data; P²AS-IoAV past-session decryption after long-term key leak, and acceptance of a forged message 1. Plus a small Shor's-algorithm circuit (factoring 15) to show the quantum threat to the ECC/RSA family.
 - **Done when:** each attack script runs end-to-end and prints the recovered secret matching the victim's.
+- **Outcome (done, commit 6c6906b):** all 8 succeed (`python -m qsv2v.attacks`), implemented from the papers' own figures. Precisions the report must keep: (a) PSLAP linking works for any eavesdropper against the version in §4.3/§6.3 (PID_AV sent in clear); against Fig. 3 (TID = h(X) ⊕ PID) only the drones can link, a passive outsider cannot. (b) P²AS-IoAV past-session decryption needs both parties' static keys (or the TA's copies, since the TA generates all private keys); the drone key alone only de-anonymises. (c) The P²AS forged message 1 is accepted, but the forger does not learn that session key. (d) The PSRS-D2D master-key attack extends to impersonating a never-captured drone. Printing errors found: PSRS-D2D step 2 certificate check, PSLAP δ (β vs γ) and msg1 contents, P²AS V₁′ equation. Shor demo factors 15 and 21.
 
 ### Phase 5 — Our post-quantum V2V protocol
 
 - **What:** a new authenticated key exchange for vehicles. Working name: **PQ-V2V-AKE**.
 - **Why:** fixes every shortcoming from Phase 4 while staying practical.
 - **How:** three messages. (1) Initiator sends a fresh ephemeral ML-KEM-768 public key + a short-lived pseudonym certificate signed by the trusted authority (ML-DSA-44) + its own signature over the transcript. (2) Responder verifies, encapsulates to the ephemeral key, returns ciphertext + its pseudonym cert + signature + a key-confirmation MAC. (3) Initiator returns its key-confirmation MAC. Session key = HKDF over the shared secret and full transcript. Optional hybrid mode adds X25519 (as TLS does today). Pseudonym rotation and a revocation list handled by the authority. For broadcast safety messages: sign with Falcon-512 and attach only a certificate digest after the first message.
+- **Design rules from Phase 4 (added after the attacks):**
+  - Session key only from the ephemeral ML-KEM secret plus transcript, never from identities or long-term values (PSRS-D2D key computable from public data; P²AS keys protected only by static keys).
+  - Each vehicle generates its own long-term ML-DSA key; the authority only signs certificates and never holds private keys (P²AS-IoAV key escrow).
+  - Certificates are ML-DSA signatures, not algebraic combinations of authority secrets, so capturing any number of vehicles reveals nothing about the authority key (PSRS-D2D linear certificates).
+  - The responder verifies the initiator's certificate and transcript signature before doing any key work (P²AS forged message 1); freshness by timestamp plus a nonce cache against replay.
+  - No static identifier on the air: the short-lived pseudonym certificate is the only identifier and rotates; no password-derived verifier stored on the vehicle (PSLAP).
+  - Messages carry full ML-DSA certificates (≈ 3.8 KB) and exceed one 802.11p frame; Phase 6 measures the fragmentation cost.
 - **Done when:** handshake completes between two simulated vehicles; tests show every Phase 4 attack fails against it; protocol modelled and verified in Scyther or Tamarin (secrecy, aliveness, agreement claims).
+  - Concretely, one test per attack class: passive eavesdropper cannot derive the key from the transcript and public data; past session keys stay secret after both long-term keys and the authority key leak; captured certificates give no way to forge a new one; a forged or replayed message 1 is rejected; two sessions under different pseudonyms share no linkable field; there is no stored password verifier to guess.
 
 ### Phase 6 — V2V network simulation
 
@@ -174,7 +186,7 @@ Ten experiments make up the results chapter; each produces one figure or table.
 | # | Experiment | Varies | Measures | Hypothesis (to test) |
 | --- | --- | --- | --- | --- |
 | E1 | Eavesdropper detection | Eve's intercept fraction 0–100% | QBER, abort rate | QBER rises \~linearly to \~25%; abort beyond \~44% interception |
-| E2 | Channel noise | Noise 0–15% | QBER, final key length | Key length falls to zero near 11% QBER |
+| E2 | Channel noise | Noise 0–15% | QBER, final key length | Key length falls to zero near 9.7% QBER with Cascade (11% with a perfect code); measured in Phase 3 |
 | E3 | Distance / loss | Link distance | Detection rate, secret key rate | Key rate decays exponentially with distance |
 | E4 | Error-correction efficiency | QBER, block size | Bits leaked vs Shannon limit | Cascade leaks \~1.1–1.2× the limit |
 | E5 | Attack success | Each base paper | Secret recovered? time taken | Every listed attack succeeds on the paper, fails on PQ-V2V-AKE |
@@ -207,8 +219,8 @@ The deadline is 5 days, so phases run back to back and the dashboard is dropped 
 
 **Schedule (weeks):**
 
-1. Day 1 — Phases 1–3: repo, BB84 on Qiskit + NumPy, noise, loss, Eve, Cascade, privacy amplification, tests
-2.  Day 2 — Phase 4: reference implementations of the three papers as baselines + attack scripts + Shor demo (kept to one day: it is evidence, not the contribution)
+1. Day 1 — Phases 1–3: repo, BB84 on Qiskit + NumPy, noise, loss, Eve, Cascade, privacy amplification, tests **(done; Phase 4 also finished on Day 1)**
+2.  Day 2 — Phase 4: reference implementations of the three papers as baselines + attack scripts + Shor demo (kept to one day: it is evidence, not the contribution) **(done early; Day 2 now starts Phase 5)**
 3.  Day 3 — Phase 5: PQ-V2V-AKE protocol, broadcast signing, Scyther model
 4.  Day 4 — Phases 6–7: V2V network simulation, run E1–E10, figures
 5.  Day 5 — Phase 9: report, README, slides; Phase 8 dashboard only if time allows
@@ -227,8 +239,9 @@ The deadline is 5 days, so phases run back to back and the dashboard is dropped 
 | Risk | Fallback |
 | --- | --- |
 | Qiskit too slow for large qubit counts | NumPy backend for big runs; Qiskit for correctness and small demos |
-| `liboqs-python` fails to install on someone's machine | Docker image for the whole project; pure-Python `kyber-py` / `dilithium-py` as backup |
+| `liboqs-python` fails to install on someone's machine | Docker image for the whole project; pure-Python `kyber-py` / `dilithium-py` as backup (implemented: liboqs is an optional extra, code and tests fall back automatically) |
 | Tamarin learning curve too steep | Use Scyther (same tool as the base papers) |
+| Scyther or Tamarin will not run on Windows | Scyther's Windows command-line build; else WSL or Docker; the model files are written either way |
 | SUMO integration takes too long | Keep the built-in highway mobility model |
 | A claimed attack does not reproduce | Report it honestly as a finding; the remaining attacks still stand |
 
