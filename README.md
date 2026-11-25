@@ -11,7 +11,7 @@ post-quantum cryptography (ML-KEM / ML-DSA). The project plan is in
 | --- | --- | --- |
 | 1 | Repo setup, BB84 core (Qiskit Aer + NumPy backends) | Done |
 | 2 | Channel noise, photon loss, intercept-resend Eve | Done |
-| 3 | Cascade, privacy amplification | Not started |
+| 3 | Cascade, privacy amplification | Done |
 | 4 | Attacks on the three base papers | Not started |
 | 5 | PQ-V2V-AKE protocol | Not started |
 | 6 | V2V network simulation | Not started |
@@ -41,6 +41,9 @@ qsv2v/
 │   ├── eve.py          InterceptResendEve (attacks a chosen fraction of photons)
 │   ├── estimation.py   QBER on a disclosed random sample; abort rule
 │   ├── theory.py       closed-form expected QBER, binary entropy, key rate
+│   ├── cascade.py      Cascade reconciliation with leak accounting
+│   ├── privacy_amp.py  Toeplitz hashing over GF(2) (FFT), verification tags
+│   ├── postprocess.py  estimate -> Cascade -> verify -> privacy amplification; run_qkd
 │   ├── bb84.py         prepare -> transmit -> measure -> sift; BB84Result
 │   └── backends/       numpy_backend.py, qiskit_backend.py
 ├── attacks/  pqc/  sim/   later phases
@@ -180,3 +183,92 @@ The test suite checks the Phase 2 "done when" criterion over **32 settings**:
 within 4σ of the exact formula. Further tests cover detection rate vs η, Eve's
 statistics, and abort / no-abort on either side of the ~44% interception
 threshold.
+
+## Post-processing to a final key (Phase 3)
+
+```python
+from qsv2v.qkd import run_qkd, QuantumChannel, PauliNoise, PostProcessingConfig
+
+r = run_qkd(100_000, channel=QuantumChannel(noise=PauliNoise.from_qber(0.04)), seed=7)
+print(r.aborted, r.final_length, r.keys_match, r.ec_efficiency, r.secret_key_rate)
+
+# Conservative finite-key variant:
+r = run_qkd(
+    100_000,
+    channel=QuantumChannel(noise=PauliNoise.from_qber(0.04)),
+    config=PostProcessingConfig(finite_key=True),
+    seed=7,
+)
+```
+
+Pipeline (`postprocess.py`). All classical messages are assumed authenticated
+(Phase 5 provides that with PQC).
+
+1. **Parameter estimation**: disclose 10% of the sifted key and abort if the
+   QBER is above 11%.
+2. **Cascade** (`cascade.py`): 4 passes. The first block size is
+   k₁ = ⌈0.73/Q⌉ (with Q floored at 1%) and doubles each pass. Passes 2–4 use
+   fresh public random shuffles. A correction in a later pass re-opens the
+   affected blocks of earlier passes (the "cascade"). **Every** parity Alice
+   discloses counts as leaked, including repeats, so the leak figure is an
+   upper bound.
+3. **Verification**: Alice and Bob compare a 64-bit Toeplitz tag of their
+   corrected keys and abort on a mismatch (collision probability 2⁻⁶⁴). The 64
+   bits count as leaked.
+4. **Privacy amplification** (`privacy_amp.py`): Toeplitz hashing over GF(2)
+   with a public random seed, computed as an FFT convolution in O(n log n). It
+   is tested against the explicit matrix product and for 2-universality. Final
+   length:
+
+   ℓ = ⌊n·(1 − h(Q))⌋ − leak_EC − 64 − ⌈2·log₂(1/ε_PA)⌉,  with ε_PA = 10⁻¹⁰ (67 bits)
+
+   This is the plan's formula. The n·h(Q) term is Eve's possible phase-error
+   information (Shor–Preskill), and the margin comes from the leftover hash
+   lemma.
+
+**Choice of Q for privacy amplification (worth a team decision).** The default
+uses the *sampled* QBER (`finite_key=False`). That is the asymptotic analysis
+that the "theoretical curve" in the plan refers to. Setting `finite_key=True`
+adds the Serfling bound μ = √((n+k)(k+1)·ln(1/ε_PE) / (2nk²)), with
+ε_PE = 10⁻¹⁰, so the key's true error rate is covered with high probability.
+That is the honest choice for short blocks but costs key: at Q = 3%, the key
+fraction is 0.27 at 40k photons and 0.47 at 400k, against 0.58 asymptotically.
+Quote which mode a figure uses.
+
+### Phase 3 results (measured, NumPy, 100,000 photons, 20 seeds per row)
+
+| QBER | Key fraction | Cascade f | Predicted 1−(1+f)·h(Q)−131/n | Shor–Preskill 1−2h(Q) | Runs with identical key |
+| --- | --- | --- | --- | --- | --- |
+| 0.00 | 0.9714 | — | 0.9714 | 1.0000 | 20/20 |
+| 0.01 | 0.8277 | 1.125 | 0.8254 | 0.8384 | 20/20 |
+| 0.02 | 0.6985 | 1.132 | 0.6956 | 0.7171 | 20/20 |
+| 0.03 | 0.5816 | 1.147 | 0.5798 | 0.6112 | 20/20 |
+| 0.04 | 0.4766 | 1.158 | 0.4741 | 0.5154 | 20/20 |
+| 0.05 | 0.3799 | 1.161 | 0.3783 | 0.4272 | 20/20 |
+| 0.06 | 0.2859 | 1.178 | 0.2838 | 0.3451 | 20/20 |
+| 0.07 | 0.1981 | 1.189 | 0.1961 | 0.2682 | 20/20 |
+| 0.08 | 0.1177 | 1.191 | 0.1157 | 0.1956 | 20/20 |
+| 0.09 | 0.0433 | 1.194 | 0.0395 | 0.1271 | 20/20 |
+| 0.10 | 0 | 1.198 | 0 | 0.0620 | 0/20 (no secret key) |
+| 0.12 | 0 | — | 0 | 0 | 0/20 (QBER abort) |
+
+Key fraction is final bits per sifted bit left after sampling. At Q = 0 the
+cost is just the Cascade parity checks plus the 131 bits of tag and margin.
+
+What this shows:
+
+- **Correctness**: no run in the test suite or in these probes produced
+  mismatched final keys (well over 1,000 runs, covering small frames, Eve,
+  near-threshold QBER and the Qiskit backend). Below 9% QBER, 100% of runs at
+  40k–100k photons end with identical non-empty keys. Verification works: with
+  4,000-photon frames, Cascade left residual errors in 2 of 200 runs and the
+  tag check aborted both. With a deliberately weak 1-pass Cascade it aborted
+  40 of 40.
+- **Curve shape**: the measured key fraction tracks 1 − (1+f)·h(Q) within
+  0.004, and sits below the Shor–Preskill curve with the same shape
+  (correlation > 0.99).
+- **Where the key runs out**: real Cascade leaks f ≈ 1.13–1.20 times the
+  Shannon limit (E4's hypothesis of 1.1–1.2× holds), so the key reaches zero
+  at Q ≈ 9.7%, not 11%. Between those two values runs end with "no secret key"
+  rather than a wrong key. Small frames lose more: the fixed 131-bit overhead
+  matters, so at 4,000 photons and Q = 8% only 131 of 200 runs yield a key.
