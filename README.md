@@ -308,7 +308,7 @@ What this shows:
 ## Attacks on the three base papers (Phase 4)
 
 ```bash
-python -m qsv2v.attacks              # all 8 attacks; Shor on N = 15
+python -m qsv2v.attacks              # the 7 attacks on the papers, then the Shor demo (N = 15)
 python -m qsv2v.attacks --kem oqs    # P2AS-IoAV on liboqs instead of kyber-py
 python -m qsv2v.attacks --n21        # also Shor on N = 21 (about 2.5 minutes)
 python -m qsv2v.attacks.psrs_d2d.attacks   # one paper at a time
@@ -323,7 +323,7 @@ only what its threat model allows. The victim's true values are used only to
 score the result. Every run is seeded and prints identical output on every
 run.
 
-### Results (all measured, `python -m qsv2v.attacks`: 8/8 succeed)
+### Results (all measured, `python -m qsv2v.attacks`: 7/7 attacks on the papers succeed; the Shor demo factors 15)
 
 | Paper | Attack | Attacker needs | Recovers | Claim refuted |
 | --- | --- | --- | --- | --- |
@@ -651,7 +651,7 @@ caches each simulation run under `runs/`, so a rerun only redraws.
 | E2 | Key reaches zero near 9.7% QBER (11% for a perfect code) | Supported | Zero at **10.0%** QBER (0.5% grid, Cascade f = 1.19). 0 of 310 runs ended with mismatched keys. |
 | E3 | Key rate decays exponentially with distance | Supported | 0.20 dB/km, the same as the fibre loss, up to 120 km. Dark counts end the key at 190 km (20% detectors, 10⁻⁵ dark counts). |
 | E4 | Cascade leaks ~1.1–1.2× the Shannon limit | Supported | 1.14–1.19× at QBER 2–10% with k1 = 0.73/Q. k1 = 1.0/Q leaked slightly less (mean 1.14 vs 1.16). No residual errors for any block size. |
-| E5 | Every attack succeeds on the papers, fails on PQ-V2V-AKE | Supported | 40/40 attack runs on the papers succeeded (8 attacks × 5 seeds, all in under 4 s). 0/40 against PQ-V2V-AKE. |
+| E5 | Every attack succeeds on the papers, fails on PQ-V2V-AKE | Supported | 35/35 runs of the 7 attacks on the papers [1–3] succeeded (5 seeds each, all in under 4 s); the separate Shor demo factored N = 15 in 5/5 runs. 0/40 attack runs succeeded against PQ-V2V-AKE. |
 | E6 | PQC within the same order as ECC; signing is the slowest step | **Partly** | PQ sign/verify is 3–4× ECDSA. Signing is slower than verifying for ML-DSA and Falcon but not for ECDSA (OpenSSL). The slowest operation is Falcon key generation (~10–14 ms, once per pseudonym). |
 | E7 | Ours costs more bytes, adds forward secrecy and revocation | Supported | 14,958 B in 3 messages vs 304–1,864 B in 2 for the papers [1–3] (P²AS-IoAV with its own Kyber-512; 2,504 B with ML-KEM-768). Compute 2–5 ms (liboqs; varies with CPU speed between runs); the papers' EC steps would take 0.4–1.3 ms in OpenSSL. Only PQ-V2V-AKE has forward secrecy, revocation and quantum resistance together. |
 | E8 | ML-DSA overflows a safety message; Falcon + digest fits | Supported | ML-DSA-44: 2,665 B (2 frames). Falcon-512 + digest: about 900 B, at most 998 B with the longest possible signature. |
@@ -738,9 +738,28 @@ pipeline runs real Cascade and privacy amplification.
 
 ## References
 
-1. M. Shariq, N. Jamil, G. S. Rawat, S. A. Chaudhry, M. Masud and A. K. Das, "Provably Secure and Reliable Privacy-Preserving Authentication Scheme for Drone-to-Drone Communications in Internet of Autonomous Things" (PSRS-D2D), *IEEE Transactions on Mobile Computing*, vol. 25, no. 1, pp. 1445–1456, Jan. 2026. doi:10.1109/TMC.2025.3601369
-2. M. Shariq, I. T. Ahmed, M. Masud, A. D. E. Berini and N. Jamil, "Design of a provable secure lightweight privacy-preserving authentication protocol for autonomous vehicles in IoT systems" (PSLAP), *Computer Networks*, vol. 261, Art. no. 111155, 2025. doi:10.1016/j.comnet.2025.111155
-3. M. Shariq, N. Jamil, G. S. Rawat, A. K. Das, S. Yigezu, M. Masud and A. H. Abd Ghafar, "Anonymous and Privacy-Preserving Post-Quantum Key Encapsulation-Based Authentication Scheme for UAV-Assisted Internet of Autonomous Vehicles" (P²AS-IoAV), *IEEE Transactions on Vehicular Technology*, vol. 75, no. 10, pp. 24698–24711, Oct. 2026. doi:10.1109/TVT.2026.3698192
+1. M. Shariq, N. Jamil, G. S. Rawat, S. A. Chaudhry, M. Masud and A. K. Das, "Provably Secure and Reliable Privacy-Preserving Authentication Scheme for Drone-to-Drone Communications in Internet of Autonomous Things" (PSRS-D2D), *IEEE Transactions on Mobile Computing*, vol. 25, no. 1, pp. 1445–1456, Jan. 2026. [doi:10.1109/TMC.2025.3601369](https://doi.org/10.1109/TMC.2025.3601369)
+2. M. Shariq, I. T. Ahmed, M. Masud, A. D. E. Berini and N. Jamil, "Design of a provable secure lightweight privacy-preserving authentication protocol for autonomous vehicles in IoT systems" (PSLAP), *Computer Networks*, vol. 261, Art. no. 111155, 2025. [doi:10.1016/j.comnet.2025.111155](https://doi.org/10.1016/j.comnet.2025.111155)
+3. M. Shariq, N. Jamil, G. S. Rawat, A. K. Das, S. Yigezu, M. Masud and A. H. Abd Ghafar, "Anonymous and Privacy-Preserving Post-Quantum Key Encapsulation-Based Authentication Scheme for UAV-Assisted Internet of Autonomous Vehicles" (P²AS-IoAV), *IEEE Transactions on Vehicular Technology*, vol. 75, no. 10, pp. 24698–24711, Oct. 2026. [doi:10.1109/TVT.2026.3698192](https://doi.org/10.1109/TVT.2026.3698192)
+4. IEEE Std 1609.2-2022, *IEEE Standard for Wireless Access in Vehicular Environments—Security Services for Application and Management Messages*. [doi:10.1109/IEEESTD.2023.10075082](https://doi.org/10.1109/IEEESTD.2023.10075082)
+5. P. W. Shor, "Algorithms for quantum computation: discrete logarithms and factoring," *Proc. 35th Annual Symposium on Foundations of Computer Science (FOCS)*, pp. 124–134, 1994. [doi:10.1109/SFCS.1994.365700](https://doi.org/10.1109/SFCS.1994.365700)
+6. C. H. Bennett and G. Brassard, "Quantum cryptography: Public key distribution and coin tossing," *Proc. IEEE Int. Conf. Computers, Systems and Signal Processing*, Bangalore, 1984; reprinted in *Theoretical Computer Science*, vol. 560, pp. 7–11, 2014. [doi:10.1016/j.tcs.2014.05.025](https://doi.org/10.1016/j.tcs.2014.05.025)
+7. NIST, FIPS 203, *Module-Lattice-Based Key-Encapsulation Mechanism Standard* (ML-KEM), Aug. 2024. [doi:10.6028/NIST.FIPS.203](https://doi.org/10.6028/NIST.FIPS.203)
+8. NIST, FIPS 204, *Module-Lattice-Based Digital Signature Standard* (ML-DSA), Aug. 2024. [doi:10.6028/NIST.FIPS.204](https://doi.org/10.6028/NIST.FIPS.204)
+9. M. Abdalla, P.-A. Fouque and D. Pointcheval, "Password-Based Authenticated Key Exchange in the Three-Party Setting" (the Real-or-Random model), *Public Key Cryptography – PKC 2005*, LNCS 3386, pp. 65–84, 2005. [doi:10.1007/978-3-540-30580-4_6](https://doi.org/10.1007/978-3-540-30580-4_6)
+10. C. J. F. Cremers, "The Scyther Tool: Verification, Falsification, and Analysis of Security Protocols," *CAV 2008*, LNCS 5123, pp. 414–418, 2008. [doi:10.1007/978-3-540-70545-1_38](https://doi.org/10.1007/978-3-540-70545-1_38)
+11. J. Bos, L. Ducas, E. Kiltz, T. Lepoint, V. Lyubashevsky, J. M. Schanck, P. Schwabe, G. Seiler and D. Stehlé, "CRYSTALS – Kyber: A CCA-Secure Module-Lattice-Based KEM," *IEEE European Symposium on Security and Privacy (EuroS&P)*, pp. 353–367, 2018. [doi:10.1109/EuroSP.2018.00032](https://doi.org/10.1109/EuroSP.2018.00032)
+12. A. Javadi-Abhari, M. Treinish, K. Krsulich, C. J. Wood, J. Lishman, J. Gacon, S. Martiel, P. D. Nation et al., "Quantum computing with Qiskit," arXiv:2405.08810, 2024. [doi:10.48550/arXiv.2405.08810](https://doi.org/10.48550/arXiv.2405.08810)
+13. G. Brassard and L. Salvail, "Secret-Key Reconciliation by Public Discussion" (Cascade), *EUROCRYPT '93*, LNCS 765, pp. 410–423, 1994. [doi:10.1007/3-540-48285-7_35](https://doi.org/10.1007/3-540-48285-7_35)
+14. C. H. Bennett, G. Brassard, C. Crépeau and U. M. Maurer, "Generalized privacy amplification," *IEEE Transactions on Information Theory*, vol. 41, no. 6, pp. 1915–1923, 1995. [doi:10.1109/18.476316](https://doi.org/10.1109/18.476316)
+15. P. W. Shor and J. Preskill, "Simple Proof of Security of the BB84 Quantum Key Distribution Protocol," *Physical Review Letters*, vol. 85, pp. 441–444, 2000. [doi:10.1103/PhysRevLett.85.441](https://doi.org/10.1103/PhysRevLett.85.441)
+16. K. Kwiatkowski, P. Kampanakis, B. E. Westerbaan and D. Stebila, "Post-Quantum Traditional (PQ/T) Hybrid Key Agreement Mechanisms for TLS 1.3," RFC 10024, Aug. 2026. [doi:10.17487/RFC10024](https://doi.org/10.17487/RFC10024)
+17. P.-A. Fouque, J. Hoffstein, P. Kirchner, V. Lyubashevsky, T. Pornin, T. Prest, T. Ricosset, G. Seiler, W. Whyte and Z. Zhang, "Falcon: Fast-Fourier Lattice-based Compact Signatures over NTRU," submission to the NIST Post-Quantum Cryptography project (first submitted 30 Nov. 2017). [falcon-sign.info](https://falcon-sign.info/)
+18. Team SimPy, "SimPy: discrete-event simulation for Python." [simpy.readthedocs.io](https://simpy.readthedocs.io/)
+19. IEEE Std 802.11p-2010, *Amendment 6: Wireless Access in Vehicular Environments* (now part of IEEE Std 802.11-2020). [doi:10.1109/IEEESTD.2010.5514475](https://doi.org/10.1109/IEEESTD.2010.5514475)
+20. D. Stebila and M. Mosca, "Post-quantum Key Exchange for the Internet and the Open Quantum Safe Project" (liboqs), *Selected Areas in Cryptography – SAC 2016*, LNCS 10532, pp. 14–37, 2017. [doi:10.1007/978-3-319-69453-5_2](https://doi.org/10.1007/978-3-319-69453-5_2)
+
+Every DOI above was resolved through doi.org and its title, venue, volume and pages checked; LNCS volume numbers are from Springer's chapter pages; the two URL-only entries (Falcon, SimPy) were checked to load.
 
 P²AS-IoAV evaluates its costs with Kyber-512 (its Sec. VII-B). Our attacks use
 ML-KEM-768; the attacks do not depend on the parameter set. E7 measures P²AS-IoAV

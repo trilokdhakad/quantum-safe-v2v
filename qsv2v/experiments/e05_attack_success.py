@@ -88,17 +88,26 @@ def run(base: Path | None = None, quick: bool = False, log=print) -> Outcome:
     ], digits=3)  # fmt: skip
 
     paper_rows = [r for r in summ if r["target"] == "base paper"]
+    # The Shor demonstration targets the ECC/RSA family, not one of the three papers.
+    on_papers = [r for r in paper_rows if r["paper"] != "ECC/RSA family"]
+    shor = [r for r in paper_rows if r["paper"] == "ECC/RSA family"]
     import textwrap
 
     fig, ax = figure(8.6, 4.6)
     labels = [
-        textwrap.fill(f"{r['paper']}: {r['attack']}", 46, max_lines=2, placeholder=" …")
+        textwrap.fill(
+            f"{'Demo, ' if r in shor else ''}{r['paper']}: {r['attack']}",
+            46,
+            max_lines=2,
+            placeholder=" …",
+        )
         for r in paper_rows
     ][::-1]
     vals = [r["seconds"] for r in paper_rows][::-1]
     errs = [r["seconds_ci95"] if r["seconds_ci95"] == r["seconds_ci95"] else 0
             for r in paper_rows][::-1]  # fmt: skip
-    ax.barh(labels, vals, xerr=errs, color=COLORS[0], height=0.55, error_kw={"lw": 1})
+    colors = [COLORS[4] if r in shor else COLORS[0] for r in paper_rows][::-1]
+    ax.barh(labels, vals, xerr=errs, color=colors, height=0.55, error_kw={"lw": 1})
     for y, (v, r) in enumerate(zip(vals, paper_rows[::-1], strict=True)):
         e = errs[y]
         ax.text((v + e) * 1.2, y, f"{r['successes']}/{r['runs']} succeeded", va="center",
@@ -106,26 +115,31 @@ def run(base: Path | None = None, quick: bool = False, log=print) -> Outcome:
     ax.set_xscale("log")
     ax.set_xlim(right=max(vals) * 30)
     ax.set_xlabel("Time to run the attack (s, log scale)")
-    ax.set_title("Every attack on the base papers succeeds, in seconds")
+    ax.set_title("All seven attacks on the three base papers succeed (grey: Shor demo)")
     ax.tick_params(axis="y", labelsize=7.5)
     ax.grid(axis="y", visible=False)
     save(fig, d)
 
     paper_ok = all(r["successes"] == r["runs"] for r in paper_rows)
+    pv = [r["seconds"] for r in on_papers]
     ours = [r for r in summ if r["target"] == "PQ-V2V-AKE"]
     ours_ok = all(r["successes"] == 0 for r in ours)
     return write_outcome(d, Outcome(
         "E5", "Attack success",
         "Every listed attack succeeds on the paper, fails on PQ-V2V-AKE",
-        f"{sum(r['successes'] for r in paper_rows)}/{sum(r['runs'] for r in paper_rows)} "
-        f"attack runs on the base papers succeeded ({len(paper_rows)} attacks × "
-        f"{len(seeds)} seeds, slowest {max(vals):.2f} s); "
+        f"{sum(r['successes'] for r in on_papers)}/{sum(r['runs'] for r in on_papers)} "
+        f"attack runs on the three base papers (PSRS-D2D, PSLAP, P²AS-IoAV) succeeded "
+        f"({len(on_papers)} attacks × {len(seeds)} seeds, slowest {max(pv):.2f} s); the "
+        f"separate Shor's-algorithm demo factored N = 15 in "
+        f"{sum(r['successes'] for r in shor)}/{sum(r['runs'] for r in shor)} runs; "
         f"{sum(r['successes'] for r in ours)}/{sum(r['runs'] for r in ours)} succeeded "
         f"against PQ-V2V-AKE ({len(ours)} attack classes; where a test has a positive "
         "control, it is part of the pass condition).",
         paper_ok and ours_ok,
-        numbers={"paper_success": sum(r["successes"] for r in paper_rows),
-                 "paper_runs": sum(r["runs"] for r in paper_rows),
+        numbers={"paper_success": sum(r["successes"] for r in on_papers),
+                 "paper_runs": sum(r["runs"] for r in on_papers),
+                 "shor_success": sum(r["successes"] for r in shor),
+                 "shor_runs": sum(r["runs"] for r in shor),
                  "ours_success": sum(r["successes"] for r in ours),
                  "ours_runs": sum(r["runs"] for r in ours)},
     ))  # fmt: skip
