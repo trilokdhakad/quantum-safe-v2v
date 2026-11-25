@@ -10,6 +10,9 @@ Writes JSON files {rows, meta} to results/showcase/ (default):
 * key_rate.json      -- final-key fraction vs QBER, with Cascade efficiency
 * attacks.json       -- the eight Phase 4 attacks: recovered value vs victim's
 * paper_errors.json  -- printing errors found in the base papers (documented)
+* defenses.json      -- every attack class re-run against PQ-V2V-AKE
+* bsm_sizes.json     -- signed safety-message sizes per signature scheme
+* scyther.json       -- Scyther claim verdicts (verification/results.txt)
 
 Every number comes from running the code with fixed seeds; nothing is typed in
 except phase names and the documented paper errors.
@@ -258,6 +261,59 @@ def build_attacks() -> list[dict]:
     return rows
 
 
+def build_defenses() -> list[dict]:
+    from qsv2v.pqc import attack_suite
+
+    rows = []
+    for i, d in enumerate(attack_suite.run_all(), 1):
+        rows.append(
+            {
+                "n": i,
+                "attack": d.attack,
+                "analogue_of": d.analogue_of,
+                "attacker": d.attacker,
+                "evidence": "; ".join(d.evidence),
+                "control": d.control,
+                "result": "Blocked" if d.blocked else "Not blocked",
+                "blocked": 1 if d.blocked else 0,
+            }
+        )
+    return rows
+
+
+def build_bsm_sizes() -> list[dict]:
+    from qsv2v.pqc.broadcast import FRAME_LIMIT, size_table
+
+    rows = size_table()
+    for r in rows:
+        r["frame_limit"] = FRAME_LIMIT
+        r["digest_msg_fits_frame"] = "yes" if r["digest_msg_fits_frame"] else "no"
+        r["cert_msg_fits_frame"] = "yes" if r["cert_msg_fits_frame"] else "no"
+    return rows
+
+
+def build_scyther() -> list[dict]:
+    """Default-bound verdicts from verification/results.txt (run_scyther.py output)."""
+    text = (ROOT / "verification" / "results.txt").read_text(encoding="utf-8")
+    rows, take = [], False
+    for line in text.splitlines():
+        if line.startswith("=="):
+            take = line.startswith("== pq_v2v_ake.spdl   expected")
+            continue
+        if take and line.strip():
+            label, verdict, *detail = line.split()
+            rows.append(
+                {
+                    "claim": label,
+                    "role": "Initiator" if "_I" in label else "Responder",
+                    "property": label.split("_")[0],
+                    "verdict": verdict,
+                    "detail": " ".join(detail).strip("[]"),
+                }
+            )
+    return rows
+
+
 def main() -> None:
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "results" / "showcase"
     out.mkdir(parents=True, exist_ok=True)
@@ -285,6 +341,12 @@ def main() -> None:
         PAPER_ERRORS,
         "Read from the three base papers (documented, not computed)",
     )  # noqa: E501
+    print("defenses")
+    write(out, "defenses.json", build_defenses(), "qsv2v.pqc.attack_suite.run_all()")
+    print("bsm sizes")
+    write(out, "bsm_sizes.json", build_bsm_sizes(), "size_table(), 200-byte payload")
+    print("scyther")
+    write(out, "scyther.json", build_scyther(), "verification/results.txt (Scyther v1.3.0)")
     print("tests")
     write(out, "tests.json", build_tests(), "pytest --junitxml over tests/")  # noqa: E501,E702
 
