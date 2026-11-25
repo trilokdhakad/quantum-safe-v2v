@@ -2,7 +2,11 @@
 
 A simulation framework for quantum-safe authentication and key exchange in
 vehicle-to-vehicle (V2V) networks: BB84 quantum key distribution and
-post-quantum cryptography (ML-KEM / ML-DSA). The project plan is in
+post-quantum cryptography (ML-KEM / ML-DSA).
+
+**Project page (results, charts and a live replay of the simulation): https://trilokdhakad.github.io/quantum-safe-v2v/**
+
+The project plan is in
 [`Quantum-Safe V2V Communication — Project Plan.md`](Quantum-Safe%20V2V%20Communication%20—%20Project%20Plan.md).
 
 ## Status
@@ -70,9 +74,11 @@ qsv2v/
 │   ├── common.py       mean + 95% CI, Wilson intervals, CSV / Markdown / figure output
 │   └── e01_eve_detection.py ... e10_qkd_vs_pqc.py
 verification/       Scyther model of PQ-V2V-AKE
-scripts/            build_showcase_data.py (progress-page datasets), run_steady_sweep.py
-dashboard/  docs/       (later phases)
+scripts/            build_showcase_data.py (page datasets), build_site.py (-> docs/data),
+                    record_traces.py (replay recordings), run_steady_sweep.py
+dashboard/          (optional Phase 8)
 results/            generated CSVs and figures (git-ignored; regenerate with the commands)
+docs/               the public project page (GitHub Pages): index.html, assets/, data/
 tests/              pytest suite, one file per module
 ```
 
@@ -645,7 +651,7 @@ caches each simulation run under `runs/`, so a rerun only redraws.
 | E4 | Cascade leaks ~1.1–1.2× the Shannon limit | Supported | 1.14–1.19× at QBER 2–10% with k1 = 0.73/Q. k1 = 1.0/Q leaked slightly less (mean 1.14 vs 1.16). No residual errors for any block size. |
 | E5 | Every attack succeeds on the papers, fails on PQ-V2V-AKE | Supported | 40/40 attack runs on the papers succeeded (8 attacks × 5 seeds, all in under 4 s). 0/40 against PQ-V2V-AKE. |
 | E6 | PQC within the same order as ECC; signing is the slowest step | **Partly** | PQ sign/verify is 3–4× ECDSA. Signing is slower than verifying for ML-DSA and Falcon but not for ECDSA (OpenSSL). The slowest operation is Falcon key generation (~10–14 ms, once per pseudonym). |
-| E7 | Ours costs more bytes, adds forward secrecy and revocation | Supported | 14,958 B in 3 messages vs 304–2,504 B in 2 for the papers. Compute about 4 ms (liboqs); the papers' EC steps would take about 1 ms in OpenSSL. Only PQ-V2V-AKE has forward secrecy, revocation and quantum resistance together. |
+| E7 | Ours costs more bytes, adds forward secrecy and revocation | Supported | 14,958 B in 3 messages vs 304–2,504 B in 2 for the papers. Compute 2–5 ms (liboqs; varies with CPU speed between runs); the papers' EC steps would take 0.4–1.3 ms in OpenSSL. Only PQ-V2V-AKE has forward secrecy, revocation and quantum resistance together. |
 | E8 | ML-DSA overflows a safety message; Falcon + digest fits | Supported | ML-DSA-44: 2,665 B (2 frames). Falcon-512 + digest: about 900 B, at most 998 B with the longest possible signature. |
 | E9 | Latency under 100 ms up to a measurable density | Supported | See below. |
 | E10 | PQC deployable now; QKD strongest in theory, needs optics | Comparison | See below. |
@@ -669,7 +675,7 @@ range.
 **E10, QKD vs PQC**: a table built from E1, E3, E7, E8 and E9
 (`e10_qkd_vs_pqc/table.md`). In the optimistic fibre-like model of E3 with a
 100 MHz ideal single-photon source, QKD gives about 8 Mbit/s of key at 0 km
-and 0.8 Mbit/s at 50 km. PQ-V2V-AKE gives about 55–65 kbit/s per CPU core and
+and 0.8 Mbit/s at 50 km. PQ-V2V-AKE gives about 50–110 kbit/s per CPU core (depending on the CPU speed during the run) and
 works in software on today's hardware. QKD needs line-of-sight optics that
 track a car closing at up to 70 m/s. The QKD numbers are an upper bound for
 V2V, since free-space loss to a moving vehicle is larger and varies.
@@ -692,9 +698,9 @@ V2V, since free-space loss to a moving vehicle is larger and varies.
 - **Phase 6 limits revised.** The 5-seed results move PQ-ML-DSA's
   every-neighbour limit from 25 to 50 vehicles. Several limits sit right at
   100 ms, so the report should quote the CIs.
-- **Laptop timings vary.** Laptop timings (E6, E7) vary by about ±30% between
-  full runs (CPU frequency scaling). The verdicts do not change, but quote the
-  CIs.
+- **Laptop timings vary.** Laptop timings (E6, E7) vary by up to 2× between
+  full runs (CPU frequency scaling), more than the within-run CIs show. The
+  verdicts do not change; quote compute times as ranges or orders of magnitude.
 - **Raspberry Pi.** E6 on a Raspberry Pi was not done (no device).
 - **Flaky real-crypto test fixed.** The test comparing the simulator's real-
   crypto mode with its model mode failed about 1 run in 25 under CPU load. It

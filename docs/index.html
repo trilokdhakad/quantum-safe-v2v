@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quantum-safe V2V communication: what we built and what we found</title>
+<meta name="description" content="A simulation study of quantum-safe vehicle-to-vehicle security: BB84 quantum key distribution, attacks on three published V2V protocols, a post-quantum handshake (ML-KEM + ML-DSA), formal verification and a network simulation.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<nav class="nav"><div class="wrap">
+  <b>QSV2V</b>
+  <a href="#problem">Problem</a><a href="#qkd">1 · QKD</a><a href="#attacks">2 · Attacks</a>
+  <a href="#protocol">3 · Our protocol</a><a href="#network">4 · Network</a>
+  <a href="#experiments">Experiments</a><a href="#conclusions">Conclusions</a>
+  <a href="https://github.com/trilokdhakad/quantum-safe-v2v">Code ↗</a>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <div class="kicker">Major project · simulation study</div>
+  <h1>Quantum-safe communication between vehicles</h1>
+  <p class="lede">Connected vehicles authenticate each other with elliptic-curve cryptography, which a large quantum computer will break. We tested both proposed replacements, quantum key distribution and post-quantum cryptography, broke three recently published V2V protocols, designed and formally verified a post-quantum handshake, and measured what it costs on a crowded road.</p>
+  <div class="stats">
+    <div class="stat"><div class="v"><span data-bind="attacks_ok">–</span>/<span data-bind="attacks_total">–</span></div><div class="l">attacks on published protocols recover the victim's secret</div></div>
+    <div class="stat"><div class="v"><span data-bind="def_ok">–</span>/<span data-bind="def_total">–</span></div><div class="l">of those attack classes blocked by our protocol</div></div>
+    <div class="stat"><div class="v"><span data-bind="scy_total">–</span></div><div class="l">security claims checked in Scyther: no attack found</div></div>
+    <div class="stat"><div class="v"><span data-bind="exp_supported">–</span>/<span data-bind="exp_tested">–</span></div><div class="l">experiment hypotheses confirmed (<span data-bind="exp_partly">–</span> more partly)</div></div>
+    <div class="stat"><div class="v"><span data-bind="tests_passed">–</span></div><div class="l">automated tests pass, fixed random seeds</div></div>
+  </div>
+  <div class="links">
+    <a class="btn solid" href="#network">Watch the simulation</a>
+    <a class="btn" href="https://github.com/trilokdhakad/quantum-safe-v2v">Source code on GitHub</a>
+  </div>
+</div></header>
+
+<section id="problem" class="problem"><div class="wrap">
+  <div class="eyebrow">The problem</div>
+  <h2>V2V security today will not survive a quantum computer</h2>
+  <p>Vehicles broadcast signed safety messages about ten times a second (position, speed, braking) and set up keys with each other for private exchanges. Today both rest on elliptic-curve cryptography (ECDSA and ECDH, as in IEEE 1609.2). Shor's algorithm solves the elliptic-curve discrete-log problem on a large quantum computer, so every signature could be forged and every recorded key exchange decrypted.</p>
+  <p>Two replacements are proposed. <b>Quantum key distribution (QKD)</b> uses physics: measuring a photon disturbs it, so an eavesdropper shows up as errors. <b>Post-quantum cryptography (PQC)</b> uses new mathematics that quantum computers are not known to break: NIST standardised ML-KEM and ML-DSA in 2024. Several recent papers also propose "secure" V2V protocols of their own. This project asks which of these actually works for vehicles, and at what cost.</p>
+  <h3>What we built (one Python codebase, every result reproducible)</h3>
+  <div class="grid4" style="margin-top:12px">
+    <div class="card part"><div class="n">1</div><h3>A BB84 QKD simulator</h3><p>On Qiskit Aer and NumPy, with channel noise, photon loss, an eavesdropper, Cascade error correction and privacy amplification.</p></div>
+    <div class="card part"><div class="n">2</div><h3>Attacks on three papers</h3><p>PSLAP, PSRS-D2D and P²AS-IoAV implemented from their own equations, then broken, plus Shor's algorithm on a simulated quantum computer.</p></div>
+    <div class="card part"><div class="n">3</div><h3>PQ-V2V-AKE, our protocol</h3><p>A three-message post-quantum handshake with rotating pseudonyms, tested against every attack and verified in Scyther.</p></div>
+    <div class="card part"><div class="n">4</div><h3>A V2V network simulator</h3><p>Up to 200 vehicles on a highway with a realistic 802.11p radio, to see whether post-quantum crypto fits on a shared channel.</p></div>
+  </div>
+</div></section>
+
+<section id="qkd"><div class="wrap">
+  <div class="eyebrow">Part 1 · Quantum key distribution</div>
+  <h2>QKD works as theory says, but distance limits it</h2>
+  <p class="intro">In BB84, Alice sends single photons in random bases; Bob measures in random bases; they keep the bits where the bases matched and compare a sample. An intercept-resend eavesdropper must guess bases too, and her wrong guesses show up as errors (QBER).</p>
+
+  <h3>An eavesdropper cannot hide</h3>
+  <p class="note">200,000 photons per point. Dots are simulated, lines are the exact formula Q = e + f/4 − f·e/2 (e = channel noise, f = fraction intercepted). Largest deviation from theory: <b data-bind="max_z">–</b> standard errors over <span data-bind="qber_points">–</span> settings.</p>
+  <div class="card"><div class="legend" id="eve-legend"></div><div class="chart" id="eve-chart"></div></div>
+  <p class="takeaway">Above the 11% line Alice and Bob abort. A clean channel detects Eve once she touches about <b>44%</b> of the photons, and full interception produces a 25% error rate. Channel noise uses up part of that margin.</p>
+
+  <h3>From raw bits to a secret key</h3>
+  <p class="note">Full pipeline: sifting, error estimation, Cascade error correction, verification and Toeplitz privacy amplification. 100,000 photons, 10 runs per point.</p>
+  <div class="card"><div class="legend" id="kr-legend"></div><div class="chart" id="kr-chart"></div></div>
+  <p class="takeaway">Measured key rates follow the prediction. Real error correction reveals about <b data-bind="cascade_f">–</b>× the theoretical minimum, so the key runs out near <b>10%</b> error rather than the 11% of the Shor–Preskill bound. Across <span data-bind="qkd_runs">–</span> runs, Alice and Bob never ended up with different keys (<span data-bind="wrong_keys">–</span> mismatches).</p>
+
+  <h3>Distance is the real limit</h3>
+  <p class="note">Fibre-like loss of 0.2 dB/km, 20% efficient detectors, an ideal single-photon source (an optimistic setting). 5 runs per distance.</p>
+  <div class="card"><div class="legend" id="e3-legend"></div><div class="chart" id="e3-chart"></div></div>
+  <p class="takeaway">The key rate falls <b data-bind="e3_db">–</b> dB per km, exactly the channel loss, until detector noise overwhelms the signal: no key at <b data-bind="e3_cut">–</b> km. QKD also needs line-of-sight optics between moving cars and an authenticated classical channel, which itself needs PQC signatures.</p>
+</div></section>
+
+<section id="attacks"><div class="wrap">
+  <div class="eyebrow">Part 2 · Cryptanalysis</div>
+  <h2>Three recent V2V protocols, broken in seconds</h2>
+  <p class="intro">Each protocol was implemented from the paper's own equations on real P-256 and ML-KEM-768 cryptography. Every attacker gets only what its threat model allows; the victim's true secret is used only to check the result. All <span data-bind="attacks_total">–</span> attacks recover it exactly.</p>
+  <div class="card tablewrap">
+    <table><thead><tr><th>Paper</th><th>Attack</th><th>What the attacker has</th><th>Claim it refutes</th><th>Result</th></tr></thead>
+    <tbody id="attack-rows"></tbody></table>
+  </div>
+  <details><summary>Printing errors found while implementing the papers</summary>
+    <div class="card tablewrap" style="margin-top:10px"><table><thead><tr><th>Paper</th><th>Where</th><th>As printed</th><th>Effect</th></tr></thead><tbody id="error-rows"></tbody></table></div>
+  </details>
+  <p class="takeaway">The flaws are in the protocol design, not just the curve: session keys built from public values, no forward secrecy, a static identifier sent in clear, a stored password verifier, and certificates whose algebra leaks the master key after two vehicles are captured. Even with a post-quantum KEM (P²AS-IoAV), the design still fails.</p>
+</div></section>
+
+<section id="protocol"><div class="wrap">
+  <div class="eyebrow">Part 3 · Our protocol</div>
+  <h2>PQ-V2V-AKE: a handshake designed against every one of those attacks</h2>
+  <p class="intro">Each design rule answers one of the attacks above. The session key comes only from a fresh ML-KEM-768 secret and the full transcript. Each vehicle holds its own ML-DSA key; the authority only signs short-lived pseudonym certificates and keeps a revocation list. The responder checks the initiator before doing any key work.</p>
+  <div class="card">
+    <div class="flow">
+      <div class="actor">Vehicle A<br><span class="sizes">initiator</span></div>
+      <div class="msg r"><div class="lbl"><b>1.</b> fresh ML-KEM public key, pseudonym certificate, nonce, time, signature over all of it</div><div class="arrow"></div></div>
+      <div class="actor">Vehicle B<br><span class="sizes">responder</span></div>
+      <div></div>
+      <div class="msg l"><div class="lbl"><b>2.</b> KEM ciphertext, B's certificate, signature over the transcript, key-confirmation MAC</div><div class="arrow"></div></div>
+      <div></div>
+      <div></div>
+      <div class="msg r"><div class="lbl"><b>3.</b> A's key-confirmation MAC → both hold the session key</div><div class="arrow"></div></div>
+      <div></div>
+    </div>
+    <p class="note" style="margin-top:12px">An optional hybrid mode adds X25519, as TLS does today. Safety messages are signed separately with Falcon-512 and carry only a certificate digest between full certificates.</p>
+  </div>
+
+  <h3>The same attacks against our protocol</h3>
+  <p class="note">Each attack class from Part 2, rerun with the attacker's full capability. Where it makes sense, a control shows the attack <i>would</i> succeed if the defence were removed, so a "blocked" result cannot come from a broken test.</p>
+  <div class="card tablewrap"><table><thead><tr><th>Attack</th><th>Analogue of</th><th>Control</th><th>Result</th></tr></thead><tbody id="defense-rows"></tbody></table></div>
+
+  <h3>Formal verification</h3>
+  <p class="note">Modelled in Scyther, the tool the base papers used, with the same claim set (secrecy, aliveness, agreement, synchronisation) for both vehicles: <b data-bind="scy_ok">–</b> of <span data-bind="scy_total">–</span> claims hold, with no attack found within bounds (5 runs, 7 runs, unbounded). A deliberately broken variant, with the responder's signature removed, fails as it should.</p>
+
+  <h3>What it costs</h3>
+  <p class="note">One complete handshake, both vehicles (mean of 40 timed runs). The papers' elliptic-curve maths runs on a slow pure-Python library here, so the second column estimates it at OpenSSL speed.</p>
+  <div class="card tablewrap"><table><thead><tr><th>Protocol</th><th>Variant</th><th class="r">Compute (ms)</th><th class="r">EC at OpenSSL speed (ms)</th><th class="r">Bytes on air</th><th class="r">Messages</th><th>Forward secrecy</th><th>Quantum-safe</th><th>Revocation</th></tr></thead><tbody id="cost-rows"></tbody></table></div>
+  <p class="takeaway">Compute is not the problem: a few milliseconds. The cost is <b>size</b>. Post-quantum keys, signatures and certificates make a handshake about 15 KB, against under 1 KB for the classical version of the same protocol.</p>
+
+  <h3>Does a signed safety message still fit in one radio frame?</h3>
+  <p class="note">Real signatures over a 200-byte payload. The full certificate goes out once a second; the other nine messages carry an 8-byte digest of it.</p>
+  <div class="card"><div class="legend" id="bsm-legend"></div><div class="chart" id="bsm-chart"></div></div>
+  <p class="takeaway">ML-DSA-44 overflows a 1,400-byte frame even with the digest. Falcon-512 with the digest fits, so Falcon is the signature for broadcasts.</p>
+</div></section>
+
+<section id="network"><div class="wrap">
+  <div class="eyebrow">Part 4 · Network simulation</div>
+  <h2>On a crowded road, the radio channel is the bottleneck</h2>
+  <p class="intro">A discrete-event simulation: a 2 km highway with three lanes each way, 802.11p radio with real airtime, carrier sensing, collisions (including hidden terminals), retries and fragmentation, and a crypto processor in each vehicle. Crypto costs are measured from the real implementations, and a mode that runs the real protocol inside the simulation agrees with them.</p>
+
+  <h3>Watch it: the same traffic, classical vs post-quantum</h3>
+  <div class="card">
+    <div id="replay"></div>
+    <div class="keyrow"><span><i style="background:var(--c0)"></i>eastbound car</span><span><i style="background:var(--c1)"></i>westbound car</span><span><i style="background:var(--warn)"></i>handshake running / safety message with certificate</span><span><i style="background:var(--ok)"></i>handshake done</span><span><i style="background:var(--bad)"></i>handshake failed</span></div>
+  </div>
+  <p class="note">60 vehicles, 6 seconds of steady-state traffic (recorded after a 6-second warm-up) replayed in your browser. Both runs use identical traffic and Falcon-512 safety messages; only the handshake differs. With ML-DSA certificates each handshake puts about 15 KB on a shared channel, so handshakes take longer and more of them fail.</p>
+
+  <h3>Handshakes as the road fills up</h3>
+  <p class="note">Steady state (12-second runs, first 6 s discarded), mean of 5 seeds per point. "Same direction only" means sessions only with vehicles travelling the same way, as platooning would need.</p>
+  <div class="card"><div class="legend" id="scale-legend"></div><div id="scale-chart"></div></div>
+  <p class="takeaway">The median handshake stays under the 100 ms budget up to about <b>100</b> vehicles for classical crypto and about <b>50</b> for both post-quantum variants (ML-DSA is right at the limit there, 95 ± 33 ms). Restricting sessions to the same direction roughly doubles that.</p>
+
+  <h3>The bigger bottleneck: signatures on every safety message</h3>
+  <p class="note">Safety messages only, no handshakes. "Delivered" means received and verified within 300 m. Steady state, 5 seeds per point.</p>
+  <div class="card"><div class="legend" id="bsmnet-legend"></div><div id="bsmnet-chart"></div></div>
+  <p class="takeaway">Ten signed messages a second per vehicle fill the channel. Falcon-512 saturates it from about 100 vehicles and ML-DSA-44 from about 50, while ECDSA still copes at 200. Quantum-safe broadcasting needs more than a signature swap: signing fewer messages, smaller certificates, or congestion control.</p>
+</div></section>
+
+<section id="experiments"><div class="wrap">
+  <div class="eyebrow">Experiments</div>
+  <h2>Ten hypotheses, stated before we measured</h2>
+  <p class="intro">The project plan fixed one hypothesis per experiment in advance. One command, <code>python -m qsv2v.experiments</code>, reruns all ten with fixed seeds and repeated runs, and redraws every figure for the report, with 95% confidence intervals.</p>
+  <div class="card tablewrap"><table><thead><tr><th>#</th><th>Experiment</th><th>Hypothesis</th><th>Verdict</th><th>What we measured</th></tr></thead><tbody id="exp-rows"></tbody></table></div>
+</div></section>
+
+<section id="conclusions"><div class="wrap">
+  <div class="eyebrow">Conclusions</div>
+  <h2>What this means for vehicles</h2>
+  <ul class="conclusions">
+    <li><b>Post-quantum cryptography is deployable now.</b> It is software on the existing on-board unit, its compute cost is a few milliseconds, and our protocol keeps every security property the published designs lacked.</li>
+    <li><b>QKD behaves exactly as theory predicts, and that is its problem for vehicles.</b> It detects any eavesdropper, but needs line-of-sight optics, loses rate exponentially with distance, and still needs PQC to authenticate its classical channel.</li>
+    <li><b>Published "secure" V2V protocols fail at the design level.</b> All eight attacks succeeded, including one on a scheme that already uses a post-quantum KEM. Quantum resistance does not help if the protocol is broken.</li>
+    <li><b>The real cost of quantum safety is bandwidth.</b> Bigger keys and signatures, not computation, limit how many vehicles a channel can serve. The broadcast layer needs redesigning, not just new algorithms.</li>
+  </ul>
+</div></section>
+
+<section id="reproduce"><div class="wrap">
+  <div class="eyebrow">Reproduce it</div>
+  <h2>Every number on this page comes from running the code</h2>
+  <pre class="cmd">git clone https://github.com/trilokdhakad/quantum-safe-v2v && cd quantum-safe-v2v
+pip install -e ".[dev,oqs]"
+python -m qsv2v.attacks          # the eight attacks, recovered secret vs victim's
+python -m qsv2v.attacks --pq     # the same attacks against PQ-V2V-AKE
+python -m qsv2v.experiments      # all ten experiments and every report figure
+pytest -q                        # the test suite</pre>
+</div></section>
+
+<footer><div class="wrap">
+  <p><b>Limits.</b> This is a simulation study: no real vehicles, radios or quantum hardware. Timings come from one laptop and vary by up to 2× between runs (CPU frequency scaling), so treat compute figures as an order of magnitude. Safety messages carry a 200-byte payload, and splitting messages over 1,400 bytes into fragments is hypothetical (real 802.11p cannot). Scyther results mean "no attack found within bounds", not a full proof.</p>
+  <p>Data on this page: <code>docs/data/</code>, produced by <code>scripts/build_showcase_data.py</code> and <code>scripts/build_site.py</code> from the experiment outputs. Tests: <span data-bind="tests_passed">–</span> of <span data-bind="tests_total">–</span> passing.</p>
+</div></footer>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -50,6 +50,12 @@ FEATURES = {
     "PQ-V2V-AKE": dict(forward_secrecy="yes", quantum_resistant="yes", revocation="yes (CRL)",
                        unlinkable="yes (rotating pseudonyms)", capture_resistant="yes",
                        offline_guessing_resistant="yes (no password)"),
+    # The same protocol with X25519 + ECDSA: ephemeral keys and the CRL remain, quantum
+    # safety does not.
+    "Classical baseline": dict(forward_secrecy="yes", quantum_resistant="no",
+                               revocation="yes (CRL)", unlinkable="yes (rotating pseudonyms)",
+                               capture_resistant="yes",
+                               offline_guessing_resistant="yes (no password)"),
 }  # fmt: skip
 
 
