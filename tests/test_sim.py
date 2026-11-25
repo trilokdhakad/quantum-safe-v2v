@@ -188,22 +188,30 @@ def test_bsm_delivery_falls_with_distance():
 
 @pytest.mark.skipif(not OQS, reason="real crypto mode uses liboqs")
 def test_real_crypto_mode_agrees_with_model():
-    from pathlib import Path
+    """Model mode reproduces real mode when given the costs real mode measured.
 
-    from qsv2v.sim.profiles import load_or_measure
+    Real mode times every operation on the wall clock, so its costs vary with CPU
+    speed and load; a profile measured at another moment can differ by 30% or more
+    (this made the test flaky under load). The model therefore runs with the median
+    costs observed during the real run: what is compared is the simulation itself.
+    """
+    from qsv2v.sim.profiles import measure_all
 
-    prof = load_or_measure(Path("results/sim/crypto_profile.json"))
-    cfg = dict(n_vehicles=10, duration=3.0, seed=3, handshake_profile="pq-mldsa")
-    model = run(SimConfig(**cfg), prof)
+    # warmup=0: with 10 vehicles nearly every handshake starts in the first second,
+    # so a warm-up window would leave a single handshake to take the median of.
+    cfg = dict(n_vehicles=10, duration=3.0, warmup=0.0, seed=3, handshake_profile="pq-mldsa")
     sim = Simulation(SimConfig(**cfg, crypto_mode="real"))
     real = sim.run()
+    prof = sim.crypto.observed_profile(measure_all(5), "pq-mldsa", "falcon")
+    model = run(SimConfig(**cfg), prof)
     assert sim.crypto.keys_agreed >= 1
     fm = {h["frames"] for h in model.handshakes if h["success"]}
     fr = {h["frames"] for h in real.handshakes if h["success"]}
     assert fm == fr == {13}
+    assert len([h for h in real.handshakes if h["success"]]) >= 8  # a median over many
     lm = np.median([h["latency"] for h in model.handshakes if h["success"]])
     lr = np.median([h["latency"] for h in real.handshakes if h["success"]])
-    assert abs(lm - lr) / lm < 0.25
+    assert abs(lm - lr) / lm < 0.25, (lm, lr)
 
 
 def test_done_when_10_to_200_vehicles_logged_to_csv(tmp_path, monkeypatch):

@@ -22,6 +22,7 @@ Crypto back-ends:
 
 from __future__ import annotations
 
+import statistics
 import time
 from dataclasses import dataclass, field
 
@@ -117,21 +118,68 @@ class RealCrypto:
             self.tx.append(Broadcaster(cred, sch, cert_every=10**9))  # cert choice made by sim
             self.rx.append(Receiver(ca.public_key, ca_scheme, self.schemes, max_age=10**6))
         self.keys_agreed = 0
+        self.timings: dict[str, list[float]] = {}  # measured seconds per operation kind
+        self._warm_up()
+
+    def _warm_up(self) -> None:
+        """Run each operation once untimed, as the measured profile does (median_ms warms up).
+
+        Without this the first, cold handshake and signature (library set-up, first
+        allocations) are charged to the simulation and bias real mode upwards.
+        """
+        from qsv2v.pqc.broadcast import Receiver, bsm_payload
+
+        if self.net is not None and len(self.net.vehicles) >= 2:
+            self.net.clock.t = self.T0
+            self.A.handshake(self.net.vehicles[0], self.net.vehicles[1], self.net.clock)
+        if self.tx:
+            m = self.tx[0].sign(bsm_payload(0), self.T0, force_cert=True)
+            r = self.rx[0]  # a throwaway receiver, so no real receiver caches this cert
+            probe = Receiver(r.authority_pk, r.authority_scheme, self.schemes, max_age=10**6)
+            probe.accept(m.encode(), self.T0)
 
     def _now(self, now: float) -> int:
         return self.T0 + int(now)
 
-    @staticmethod
-    def _timed(fn, *a):
+    def _record(self, kind: str, dt: float) -> float:
+        self.timings.setdefault(kind, []).append(dt)
+        return dt
+
+    def _timed(self, kind: str, fn, *a):
         t0 = time.perf_counter()
         out = fn(*a)
-        return out, time.perf_counter() - t0
+        return out, self._record(kind, time.perf_counter() - t0)
+
+    def observed_profile(self, base, hs_name: str | None, bc_name: str):
+        """A model profile with the median costs this real run actually measured.
+
+        Sizes come from ``base``. Running model mode with it checks that the two
+        modes simulate the same thing, independent of how fast the CPU was.
+        """
+        from dataclasses import asdict, replace
+
+        from qsv2v.sim.profiles import CryptoProfile
+
+        med = {k: statistics.median(v) for k, v in self.timings.items()}
+        hs = dict(base.handshakes)
+        if hs_name:
+            hs[hs_name] = asdict(replace(
+                base.handshake(hs_name), t_initiate=med["initiate"], t_respond=med["respond"],
+                t_finish=med["finish"], t_confirm=med["confirm"],
+            ))  # fmt: skip
+        b = base.broadcast(bc_name)
+        t_verify = med.get("verify", b.t_verify)
+        t_cert = med.get("verify_new_cert", t_verify + b.t_verify_cert) - t_verify
+        bc = dict(base.broadcasts)
+        bc[bc_name] = asdict(replace(b, t_sign=med.get("sign", b.t_sign), t_verify=t_verify,
+                                     t_verify_cert=max(0.0, t_cert)))  # fmt: skip
+        return CryptoProfile(base.machine + " (observed in real mode)", hs, bc)
 
     def bsm_sign(self, i: int, with_cert: bool, now: float):
         from qsv2v.pqc.broadcast import bsm_payload
 
         msg, dt = self._timed(
-            lambda: self.tx[i].sign(bsm_payload(0), self._now(now), force_cert=with_cert)
+            "sign", lambda: self.tx[i].sign(bsm_payload(0), self._now(now), force_cert=with_cert)
         )
         wire = msg.encode()
         return len(wire), self.k * dt, wire
@@ -146,17 +194,21 @@ class RealCrypto:
         except BroadcastError:
             ok = False
         dt = time.perf_counter() - t0
+        if ok:
+            self._record("verify_new_cert" if with_cert and not knows_cert else "verify", dt)
         return self.k * dt, ok, ok and with_cert
 
     def hs_start(self, i: int, j: int, now: float):
         self.net.clock.t = self._now(now)
-        (m1, st), dt = self._timed(self.A.initiate, self.net.vehicles[i], self.net.clock)
+        (m1, st), dt = self._timed(
+            "initiate", self.A.initiate, self.net.vehicles[i], self.net.clock
+        )
         return {"i": i, "j": j, "m1obj": m1, "st": st, "m1": len(m1.encode())}, self.k * dt
 
     def hs_respond(self, state, now):
         self.net.clock.t = self._now(now)
         (m2, st_r), dt = self._timed(
-            self.A.respond, self.net.vehicles[state["j"]], state["m1obj"], self.net.clock
+            "respond", self.A.respond, self.net.vehicles[state["j"]], state["m1obj"], self.net.clock
         )
         state.update(m2obj=m2, st_r=st_r, m2=len(m2.encode()))
         return state["m2"], self.k * dt
@@ -164,6 +216,7 @@ class RealCrypto:
     def hs_finish(self, state, now):
         self.net.clock.t = self._now(now)
         (m3, res_i), dt = self._timed(
+            "finish",
             self.A.finish,
             self.net.vehicles[state["i"]],
             state["st"],
@@ -174,7 +227,7 @@ class RealCrypto:
         return state["m3"], self.k * dt
 
     def hs_confirm(self, state, now):
-        res_r, dt = self._timed(self.A.confirm, state["st_r"], state["m3obj"])
+        res_r, dt = self._timed("confirm", self.A.confirm, state["st_r"], state["m3obj"])
         ok = res_r.key == state["res_i"].key
         self.keys_agreed += ok
         return ok, self.k * dt

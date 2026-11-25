@@ -1,6 +1,9 @@
 """Build the datasets behind the project-progress page from real runs of this codebase.
 
-    python scripts/build_showcase_data.py [out_dir]
+    python scripts/build_showcase_data.py [out_dir] [--only phases tests ...]
+
+Run ``python -m qsv2v.experiments`` first: the experiment datasets are read
+from results/experiments/.
 
 Writes JSON files {rows, meta} to results/showcase/ (default):
 
@@ -13,9 +16,12 @@ Writes JSON files {rows, meta} to results/showcase/ (default):
 * defenses.json      -- every attack class re-run against PQ-V2V-AKE
 * bsm_sizes.json     -- signed safety-message sizes per signature scheme
 * scyther.json       -- Scyther claim verdicts (verification/results.txt)
-* sim_steady.json    -- V2V simulation with handshakes, steady state (results/sim/steady)
-* sim_broadcast.json -- V2V simulation, safety messages only (results/sim/summary.csv)
-* crypto_ops.json    -- ms per primitive operation on this machine (E6)
+* sim_steady.json    -- E9 runs with handshakes (5 seeds, steady state)
+* sim_broadcast.json -- E9 runs with safety messages only (5 seeds, steady state)
+* crypto_ops.json    -- E6: ms per primitive operation, mean of repeated medians
+* experiments.json   -- E1-E10 hypotheses, verdicts and findings
+* e3_distance.json   -- E3: detection rate and secret key rate vs distance
+* e7_cost.json       -- E7: compute, bytes and messages per handshake protocol
 * trace_*.json       -- recorded simulation traces for the animated replay
 
 Every number comes from running the code with fixed seeds; nothing is typed in
@@ -336,10 +342,61 @@ def build_sim_runs(path: Path, keep=lambda r: True) -> list[dict]:
     return rows
 
 
-def build_crypto_ops() -> list[dict]:
-    from qsv2v.pqc.bench import primitive_table
+EXP = ROOT / "results" / "experiments"
+E9_COLS = ["sweep", "n_vehicles", "handshake_profile", "bsm_profile", "hs_policy", "seed",
+           "speed_scale", "hs_attempted", "hs_success_rate", "hs_latency_ms_p50",
+           "hs_latency_ms_p95", "hs_within_100ms", "cbr_mean", "bsm_pdr_in_range",
+           "bsm_latency_ms_p95", "cpu_util_max"]  # fmt: skip
 
-    return primitive_table()
+
+def _num(v):
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return v
+    return None if math.isnan(x) else x
+
+
+def _rows(path: Path, cols=None) -> list[dict]:
+    import csv
+
+    with path.open(encoding="utf-8") as f:
+        return [{k: _num(v) if v not in ("", "None") else None for k, v in r.items()
+                 if cols is None or k in cols} for r in csv.DictReader(f)]  # fmt: skip
+
+
+def build_e9(sweep: str) -> list[dict]:
+    return [r for r in _rows(EXP / "e09_network_scale" / "data.csv", E9_COLS)
+            if r["sweep"] == sweep]  # fmt: skip
+
+
+def build_crypto_ops() -> list[dict]:
+    keep = ["primitive", "kind", "operation", "ms", "ms_ci95", "n", "bytes_pk", "bytes_out"]
+    return _rows(EXP / "e06_crypto_timing" / "summary.csv", keep)
+
+
+def build_experiments() -> list[dict]:
+    names = {True: "Supported", False: "Not supported", "partly": "Partly supported",
+             None: "Comparison"}  # fmt: skip
+    data = json.loads((EXP / "summary.json").read_text(encoding="utf-8"))
+    return [{"n": int(o["key"][1:]), "key": o["key"], "title": o["title"],
+             "hypothesis": o["hypothesis"], "verdict": names[o["supported"]],
+             "supported": 1 if o["supported"] is True else 0,
+             "tested": 0 if o["supported"] is None else 1, "finding": o["finding"]}
+            for o in data]  # fmt: skip
+
+
+def build_e3() -> list[dict]:
+    keep = ["distance_km", "detection_rate", "qber", "skr_asymptotic", "skr_asymptotic_ci95",
+            "skr_end_to_end", "skr_theory", "detection_theory", "n"]  # fmt: skip
+    return _rows(EXP / "e03_distance_loss" / "summary.csv", keep)
+
+
+def build_e7() -> list[dict]:
+    keep = ["protocol", "variant", "implementation", "compute_ms", "compute_ms_ci95",
+            "ec_at_c_speed_ms", "bytes_total", "bytes_per_message", "messages",
+            "forward_secrecy", "quantum_resistant", "revocation", "n"]  # fmt: skip
+    return _rows(EXP / "e07_handshake_cost" / "summary.csv", keep)
 
 
 def copy_traces(out: Path) -> None:
@@ -352,59 +409,35 @@ def copy_traces(out: Path) -> None:
 
 
 def main() -> None:
-    out = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "results" / "showcase"
+    args = sys.argv[1:]
+    only = set(args[args.index("--only") + 1 :]) if "--only" in args else None
+    pos = [a for a in args[: args.index("--only")] if "--only" in args] if only else args
+    out = Path(pos[0]) if pos else ROOT / "results" / "showcase"
     out.mkdir(parents=True, exist_ok=True)
-    print("phases")
-    write(out, "phases.json", build_phases(), "git log (commit subjects 'Phase N:')")  # noqa: E501,E702
-    print("qber grid")
-    write(
-        out,
-        "qber_grid.json",
-        build_qber_grid(),
-        "run_bb84, 200,000 photons per point, NumPy backend",
-    )  # noqa: E501,E702
-    print("key rate")
-    write(
-        out,
-        "key_rate.json",
-        build_key_rate(),
-        "run_qkd, 100,000 photons, 10 seeds per point, asymptotic mode",
-    )  # noqa: E501,E702
-    print("attacks")
-    write(out, "attacks.json", build_attacks(), "python -m qsv2v.attacks (seed 0, kyber-py ML-KEM)")  # noqa: E501,E702
-    write(
-        out,
-        "paper_errors.json",
-        PAPER_ERRORS,
-        "Read from the three base papers (documented, not computed)",
-    )  # noqa: E501
-    print("defenses")
-    write(out, "defenses.json", build_defenses(), "qsv2v.pqc.attack_suite.run_all()")
-    print("bsm sizes")
-    write(out, "bsm_sizes.json", build_bsm_sizes(), "size_table(), 200-byte payload")
-    print("scyther")
-    write(out, "scyther.json", build_scyther(), "verification/results.txt (Scyther v1.3.0)")
-    print("sim steady")
-    write(
-        out,
-        "sim_steady.json",
-        build_sim_runs(ROOT / "results" / "sim" / "steady" / "summary.csv"),
-        "scripts/run_steady_sweep.py: 12 s runs, first 6 s discarded",
-    )
-    print("sim broadcast")
-    write(
-        out,
-        "sim_broadcast.json",
-        build_sim_runs(
-            ROOT / "results" / "sim" / "summary.csv", lambda r: r["handshake_profile"] == "none"
-        ),
-        "python -m qsv2v.sim --handshake none --bsm ecdsa falcon mldsa (4 s runs)",
-    )
-    print("crypto ops")
-    write(out, "crypto_ops.json", build_crypto_ops(), "qsv2v.pqc.bench.primitive_table()")
-    copy_traces(out)
-    print("tests")
-    write(out, "tests.json", build_tests(), "pytest --junitxml over tests/")  # noqa: E501,E702
+    e9 = "python -m qsv2v.experiments (E9): 12 s runs, first 6 s discarded, 5 seeds"
+    jobs = {
+        "phases": (build_phases, "git log (commit subjects 'Phase N:')"),
+        "qber_grid": (build_qber_grid, "run_bb84, 200,000 photons per point, NumPy backend"),
+        "key_rate": (build_key_rate, "run_qkd, 100,000 photons, 10 seeds per point, asymptotic"),
+        "attacks": (build_attacks, "python -m qsv2v.attacks (seed 0, kyber-py ML-KEM)"),
+        "paper_errors": (lambda: PAPER_ERRORS, "Read from the three base papers (documented)"),
+        "defenses": (build_defenses, "qsv2v.pqc.attack_suite.run_all()"),
+        "bsm_sizes": (build_bsm_sizes, "size_table(), 200-byte payload"),
+        "scyther": (build_scyther, "verification/results.txt (Scyther v1.3.0)"),
+        "sim_steady": (lambda: build_e9("handshake"), e9),
+        "sim_broadcast": (lambda: build_e9("broadcast"), e9 + ", no handshakes"),
+        "crypto_ops": (build_crypto_ops, "E6: qsv2v.pqc.bench.primitive_table() x 7 repeats"),
+        "experiments": (build_experiments, "results/experiments/summary.json (E1-E10)"),
+        "e3_distance": (build_e3, "results/experiments/e03_distance_loss/summary.csv"),
+        "e7_cost": (build_e7, "results/experiments/e07_handshake_cost/summary.csv"),
+        "tests": (build_tests, "pytest --junitxml over tests/"),
+    }
+    for name, (fn, inputs) in jobs.items():
+        if only is None or name in only:
+            print(name)
+            write(out, f"{name}.json", fn(), inputs)
+    if only is None or "traces" in only:
+        copy_traces(out)
 
 
 if __name__ == "__main__":

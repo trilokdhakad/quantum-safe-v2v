@@ -696,3 +696,10 @@ V2V, since free-space loss to a moving vehicle is larger and varies.
   full runs (CPU frequency scaling). The verdicts do not change, but quote the
   CIs.
 - **Raspberry Pi.** E6 on a Raspberry Pi was not done (no device).
+- **Flaky real-crypto test fixed.** The test comparing the simulator's real-
+  crypto mode with its model mode failed about 1 run in 25 under CPU load. It
+  compared a timing profile cached hours earlier with wall-clock timings taken
+  during the run, and its median rested on a single handshake. Now real mode
+  records the cost of every operation and warms up first, as the profile
+  measurement does. The model runs with the costs real mode actually observed,
+  over all 13 handshakes. It passed 40 of 40 runs under 8-way parallel load.
