@@ -6,6 +6,21 @@ from qsv2v.qkd.backends import NumpyBackend, QiskitAerBackend
 SEED = 20261125
 
 
+def _oqs_available() -> bool:
+    try:
+        import oqs  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+OQS = _oqs_available()
+KEM_BACKENDS = [
+    "kyber-py",
+    pytest.param("oqs", marks=pytest.mark.skipif(not OQS, reason="liboqs-python unavailable")),
+]
+
+
 @pytest.fixture
 def rng():
     return np.random.default_rng(SEED)

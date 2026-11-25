@@ -12,7 +12,7 @@ post-quantum cryptography (ML-KEM / ML-DSA). The project plan is in
 | 1 | Repo setup, BB84 core (Qiskit Aer + NumPy backends) | Done |
 | 2 | Channel noise, photon loss, intercept-resend Eve | Done |
 | 3 | Cascade, privacy amplification | Done |
-| 4 | Attacks on the three base papers | Not started |
+| 4 | Attacks on the three base papers | Done |
 | 5 | PQ-V2V-AKE protocol | Not started |
 | 6 | V2V network simulation | Not started |
 | 7 | Experiments E1–E10 | Not started |
@@ -26,8 +26,8 @@ Python 3.11+.
 ```bash
 python -m venv .venv            # or: uv venv --python 3.12 .venv
 . .venv/bin/activate            # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-pytest -q
+pip install -e ".[dev,oqs]"   # drop ",oqs" if liboqs will not build (needs CMake + C compiler)
+pytest -q                      # liboqs tests skip automatically when it is unavailable
 ```
 
 ## Layout
@@ -46,7 +46,14 @@ qsv2v/
 │   ├── postprocess.py  estimate -> Cascade -> verify -> privacy amplification; run_qkd
 │   ├── bb84.py         prepare -> transmit -> measure -> sift; BB84Result
 │   └── backends/       numpy_backend.py, qiskit_backend.py
-├── attacks/  pqc/  sim/   later phases
+├── crypto/         seeded DRBG, P-256 arithmetic (ecdsa), SHA-256, AES-GCM
+├── pqc/kem.py      ML-KEM-768: liboqs or kyber-py (deterministic), interoperable
+├── attacks/        the three base papers as printed + attacks + Shor demo
+│   ├── psrs_d2d/       protocol.py, attacks.py
+│   ├── pslap/          protocol.py, attacks.py
+│   ├── p2as_ioav/      protocol.py, attacks.py
+│   └── shor_demo.py
+├── sim/            later phases
 experiments/  verification/  dashboard/  results/  docs/
 tests/              pytest suite, one file per module
 ```
@@ -226,7 +233,8 @@ Pipeline (`postprocess.py`). All classical messages are assumed authenticated
    information (Shor–Preskill), and the margin comes from the leftover hash
    lemma.
 
-**Choice of Q for privacy amplification (worth a team decision).** The default
+**Choice of Q for privacy amplification. Team decision: the default asymptotic
+mode is used for every figure in the report.** The default
 uses the *sampled* QBER (`finite_key=False`). That is the asymptotic analysis
 that the "theoretical curve" in the plan refers to. Setting `finite_key=True`
 adds the Serfling bound μ = √((n+k)(k+1)·ln(1/ε_PE) / (2nk²)), with
@@ -272,3 +280,87 @@ What this shows:
   at Q ≈ 9.7%, not 11%. Between those two values runs end with "no secret key"
   rather than a wrong key. Small frames lose more: the fixed 131-bit overhead
   matters, so at 4,000 photons and Q = 8% only 131 of 200 runs yield a key.
+
+## Attacks on the three base papers (Phase 4)
+
+```bash
+python -m qsv2v.attacks              # all 8 attacks; Shor on N = 15
+python -m qsv2v.attacks --kem oqs    # P2AS-IoAV on liboqs instead of kyber-py
+python -m qsv2v.attacks --n21        # also Shor on N = 21 (about 2.5 minutes)
+python -m qsv2v.attacks.psrs_d2d.attacks   # one paper at a time
+```
+
+Each protocol is implemented from the paper's own figures and equations
+(`protocol.py` quotes them in its docstring). Real P-256 arithmetic comes from
+`ecdsa`, and real ML-KEM-768 from liboqs or `kyber-py`. Each attack is given
+only what its threat model allows. The victim's true values are used only to
+score the result. Every run is seeded and prints identical output on every
+run.
+
+### Results (all measured, `python -m qsv2v.attacks`: 8/8 succeed)
+
+| Paper | Attack | Attacker needs | Recovers | Claim refuted |
+| --- | --- | --- | --- | --- |
+| PSRS-D2D | Passive session-key recovery | Transcript + public key directory | Both drone IDs and the session key | Prop. 2 anonymity, Prop. 5 session-key security |
+| PSRS-D2D | Forward secrecy break | Capture one drone, later | Every past session key of that drone (both roles) | Prop. 4 forward secrecy, Prop. 11 capture resistance |
+| PSRS-D2D | Master-key extraction | Capture two drones | Pr_TA and MK_TA, then impersonates a never-captured drone and shares its session key | Prop. 11, Prop. 10 impersonation |
+| PSLAP | Session linking | §4.3 text version: eavesdropper. Fig. 3 version: the drones | Exact grouping of all sessions per vehicle | Prop. 2 anonymity / untraceability |
+| PSLAP | Offline password guessing | OBU ⟨β, γ, δ⟩ + public ID_AV | Password, a₁, α, PID_AV | Prop. 8 AV capture |
+| P²AS-IoAV | Forged message 1 | Drone's public key + a registered vehicle ID | Drone accepts and stores a session with the victim vehicle | Prop. 1 mutual authentication, Prop. 8 impersonation |
+| P²AS-IoAV | Past-session decryption | Transcripts; later pr_DR and pr_AV (or the TA's copies) | Past session keys and the data sent under them | Prop. 9 perfect forward secrecy |
+| ECC/RSA | Shor's algorithm on Qiskit Aer | Quantum computer (simulated) | Factors of 15 (and 21) and all periods | Classical public-key security against quantum adversaries |
+
+Why each attack works, from the papers' own equations:
+
+- **PSRS-D2D.** ADC = a + Cert, and Cert·G = Pub_TA + MP_TA + h(Pub‖ID_TA‖ID‖Pub_TA)·Pub_TA
+  is public. So anyone computes X = ADC·G − Cert·G. Trying each directory
+  entry until IDbar ⊕ X = ID also reveals who is talking. The session key has
+  no Diffie–Hellman term. Cert = (Pr_TA + MK_TA) + h·Pr_TA is affine in the two
+  TA secrets, so two certificates give two linear equations mod q.
+- **PSLAP.** PID_AV = h(ID‖a₁) never changes. δ = h(PID‖PWD‖α‖β) lets anyone
+  holding the OBU test a password guess offline, and identities are public in
+  the paper's own adversary model (§3.2).
+- **P²AS-IoAV.** Everything the drone checks in msg1 comes from k_i, which the
+  sender creates with Encaps on the drone's public key, or from (s_i, ID_AV),
+  which are read out of the message itself. The KEM keys are static and the TA
+  generates them all, so nothing protects past sessions once those keys leak.
+
+**Where the papers don't support the plan's wording (stated honestly):**
+
+- **PSLAP linking.** The text of §4.3 and the cost analysis in §6.3 send
+  msg1 = ⟨Y, m1, m2, **PID_AV**, T1⟩: the static pseudo-identity in clear, which
+  any eavesdropper can link. Fig. 3 and Prop. 2 send TID = h(X) ⊕ PID instead.
+  Against that version a *passive outsider* cannot link sessions (tested: 30
+  sessions give 30 separate groups). The *drones* can: every drone recovers the
+  static PID in every session, and the paper's adversary model treats drones as
+  untrusted.
+- **P²AS-IoAV forward secrecy.** One leaked key is not enough. The drone's key
+  alone recovers past vehicles' IDs and s_i (de-anonymisation) but not the
+  session key, because r_j stays sealed to the vehicle's key (tested). Both
+  static keys are needed, or the TA's copies. That still breaks the paper's
+  PFS claim, which explicitly covers compromise of long-term keys.
+- **P²AS-IoAV forged message 1.** The drone accepts the forged vehicle, but the
+  forger does not learn that session's key.
+
+**Printing errors found in the papers.** The code reproduces each one behind a
+flag, and the tests confirm they break honest runs. The attacks use the only
+consistent reading.
+
+| Paper | Location | As printed | Effect |
+| --- | --- | --- | --- |
+| PSRS-D2D | Fig. 2 / §V-C step 2 | D_j checks Cert_i with h(Pub_j‖ID_TA‖ID_j‖Pub_TA), its own values | Honest handshakes always fail |
+| PSLAP | Fig. 2 vs Fig. 3 | δ is built with β at registration and recomputed with γ at login | Honest logins always fail |
+| PSLAP | §4.3 vs Fig. 3 | msg1 carries PID_AV in one, TID_AV in the other | Two different privacy properties |
+| P²AS-IoAV | §V-C.1 step 2 | V₁′ = h(r_j‖k_j‖sk₁‖s_i‖TS₁) | Uses values the drone lacks; Fig. 2 is consistent |
+
+**Implementation choices where the papers are silent** (none affects any
+attack): P-256, SHA-256, 160-bit identities (PSRS-D2D §VII-B), and "X ⊕ ID"
+taken as the ID XORed with the first 20 bytes of X's x-coordinate. P²AS-IoAV's
+Enc/Dec is AES-256-GCM. Peers get public keys from a TA-published directory,
+which the papers use without describing.
+
+**Shor demo scope.** Real phase estimation and inverse QFT on Aer: 12 qubits
+for N = 15, 15 for N = 21. The modular-multiplication oracle is a classically
+computed permutation matrix, which is fine at this size but not scalable.
+Breaking P-256 would need about 2,330 logical qubits (Roetteler et al. 2017).
+That is why "harvest now, decrypt later" is the practical threat.

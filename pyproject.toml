@@ -13,10 +13,16 @@ dependencies = [
     "numpy>=1.26",
     "qiskit>=1.2",
     "qiskit-aer>=0.15",
+    "ecdsa>=0.19",
+    "cryptography>=42",
+    "kyber-py>=1.0",
+    "dilithium-py>=1.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
+# liboqs (C) via liboqs-python; builds liboqs with CMake on first import.
+oqs = ["liboqs-python>=0.12"]
 
 [tool.setuptools.packages.find]
 include = ["qsv2v*"]
