@@ -154,6 +154,7 @@ Nine phases, each ending with working, tested code before the next starts; Phase
   - Messages carry full ML-DSA certificates (≈ 3.8 KB) and exceed one 802.11p frame; Phase 6 measures the fragmentation cost.
 - **Done when:** handshake completes between two simulated vehicles; tests show every Phase 4 attack fails against it; protocol modelled and verified in Scyther or Tamarin (secrecy, aliveness, agreement claims).
   - Concretely, one test per attack class: passive eavesdropper cannot derive the key from the transcript and public data; past session keys stay secret after both long-term keys and the authority key leak; captured certificates give no way to forge a new one; a forged or replayed message 1 is rejected; two sessions under different pseudonyms share no linkable field; there is no stored password verifier to guess.
+- **Outcome (done):** handshake works in PQ-only and hybrid modes (3.6 ms compute on liboqs; m1 ≈ 7.5 KB, m2 ≈ 7.4 KB because each carries an ML-DSA certificate). All 8 Phase 4 attack classes blocked, with positive controls (`python -m qsv2v.attacks --pq`). E8 sizes measured: ML-DSA-44 overflows a 1,400 B frame even with a digest (2,665 B); Falcon-512 + digest fits (899 B). Scyther: all 12 claims, no attack found within bounds (5, 7 runs and --unbounded; Scyther does not report an unbounded proof). A negative control without the responder signature fails as expected. A Scyther pitfall was found: user-declared inversekeys pairs behave symmetrically in v1.3.0, so the model uses the built-in pk/sk pair.
 
 ### Phase 6 — V2V network simulation
 
@@ -221,7 +222,7 @@ The deadline is 5 days, so phases run back to back and the dashboard is dropped 
 
 1. Day 1 — Phases 1–3: repo, BB84 on Qiskit + NumPy, noise, loss, Eve, Cascade, privacy amplification, tests **(done; Phase 4 also finished on Day 1)**
 2.  Day 2 — Phase 4: reference implementations of the three papers as baselines + attack scripts + Shor demo (kept to one day: it is evidence, not the contribution) **(done early; Day 2 now starts Phase 5)**
-3.  Day 3 — Phase 5: PQ-V2V-AKE protocol, broadcast signing, Scyther model
+3.  Day 3 — Phase 5: PQ-V2V-AKE protocol, broadcast signing, Scyther model **(done on Day 1)**
 4.  Day 4 — Phases 6–7: V2V network simulation, run E1–E10, figures
 5.  Day 5 — Phase 9: report, README, slides; Phase 8 dashboard only if time allows
 

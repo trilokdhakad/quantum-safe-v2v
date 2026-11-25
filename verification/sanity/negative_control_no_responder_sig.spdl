@@ -1,0 +1,48 @@
+/* NEGATIVE CONTROL: PQ-V2V-AKE with the responder's signature removed from m2.
+ * Scyther must find attacks (a man in the middle can encapsulate to the
+ * initiator's ephemeral key itself). Generated from pq_v2v_ake.spdl. */
+
+hashfunction KDF, MAC, H;
+
+protocol PQV2VAKE(I, R)
+{
+  role I
+  {
+    fresh ne: Nonce;
+    fresh NI: Nonce;
+    var NR: Nonce;
+    var ss: Nonce;
+
+    send_1(I, R, pk(ne), NI, {pk(ne), NI, I}sk(I));
+    recv_2(R, I, {ss}pk(ne), NR,
+           MAC(KDF(ss, H(pk(ne), NI, I, {ss}pk(ne), NR, R), R), NI, NR));
+    send_3(I, R, MAC(KDF(ss, H(pk(ne), NI, I, {ss}pk(ne), NR, R), I), NI, NR, R));
+
+    claim_I1(I, Secret, ss);
+    claim_I2(I, Secret, KDF(ss, H(pk(ne), NI, I, {ss}pk(ne), NR, R)));
+    claim_I3(I, Alive);
+    claim_I4(I, Weakagree);
+    claim_I5(I, Niagree);
+    claim_I6(I, Nisynch);
+  }
+
+  role R
+  {
+    var EK: Ticket;
+    var NI: Nonce;
+    fresh NR: Nonce;
+    fresh ss: Nonce;
+
+    recv_1(I, R, EK, NI, {EK, NI, I}sk(I));
+    send_2(R, I, {ss}EK, NR,
+           MAC(KDF(ss, H(EK, NI, I, {ss}EK, NR, R), R), NI, NR));
+    recv_3(I, R, MAC(KDF(ss, H(EK, NI, I, {ss}EK, NR, R), I), NI, NR, R));
+
+    claim_R1(R, Secret, ss);
+    claim_R2(R, Secret, KDF(ss, H(EK, NI, I, {ss}EK, NR, R)));
+    claim_R3(R, Alive);
+    claim_R4(R, Weakagree);
+    claim_R5(R, Niagree);
+    claim_R6(R, Nisynch);
+  }
+}

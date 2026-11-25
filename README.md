@@ -13,7 +13,7 @@ post-quantum cryptography (ML-KEM / ML-DSA). The project plan is in
 | 2 | Channel noise, photon loss, intercept-resend Eve | Done |
 | 3 | Cascade, privacy amplification | Done |
 | 4 | Attacks on the three base papers | Done |
-| 5 | PQ-V2V-AKE protocol | In progress: protocol, broadcast, attack tests done; Scyther run pending |
+| 5 | PQ-V2V-AKE protocol | Done |
 | 6 | V2V network simulation | Not started |
 | 7 | Experiments E1–E10 | Not started |
 | 8 | Dashboard (optional) | Not started |
@@ -373,7 +373,7 @@ computed permutation matrix, which is fine at this size but not scalable.
 Breaking P-256 would need about 2,330 logical qubits (Roetteler et al. 2017).
 That is why "harvest now, decrypt later" is the practical threat.
 
-## PQ-V2V-AKE: our post-quantum protocol (Phase 5, in progress)
+## PQ-V2V-AKE: our post-quantum protocol (Phase 5)
 
 ```bash
 python -m qsv2v.attacks --pq        # attacks on the papers, then the same classes against ours
@@ -446,12 +446,45 @@ This confirms E8's hypothesis: ML-DSA-44 alone overflows a frame even with a
 digest, and Falcon-512 with a digest fits. Messages that carry a full
 post-quantum certificate need fragmenting or separate distribution.
 
-### Formal verification (pending)
+### Formal verification (Scyther)
 
-`verification/pq_v2v_ake.spdl` models the handshake for Scyther. It claims
-secrecy of the KEM secret and the session key, plus aliveness, weak
-agreement, non-injective agreement and synchronisation, for both roles: the
-same claim set the base papers report. The ephemeral KEM key is modelled as
-the inverse key pair pkE(ne)/skE(ne). The model has **not been run yet**. The
-official Scyther Windows build (v1.3.0) is downloaded outside the project,
-but running it needs your approval.
+```bash
+set SCYTHER=C:\path\to\scyther-w32.exe       # Scyther v1.3.0, official Windows build
+python verification/run_scyther.py            # writes verification/results.txt
+```
+
+`verification/pq_v2v_ake.spdl` models the handshake in Scyther's Dolev–Yao
+setting. It makes the same claim set the base papers report, for both roles.
+
+| Claim | Initiator | Responder |
+| --- | --- | --- |
+| Secret: KEM shared secret ss | Ok | Ok |
+| Secret: session key | Ok | Ok |
+| Alive | Ok | Ok |
+| Weakagree | Ok | Ok |
+| Niagree | Ok | Ok |
+| Nisynch | Ok | Ok |
+
+All 12 claims: **no attack found** at the default bound (5 runs), at 7 runs,
+and with `--unbounded`. Scyther still labels every result "within bounds", not
+"proof of correctness", so the report should say *no attack found within
+bounds*, not *proved*. The likely reason is the responder's untyped `Ticket`
+variable for the received key.
+
+Checks that the model means something (`verification/sanity/`, all run by the
+script and the test suite):
+
+- **Negative control.** The same protocol with the responder's signature
+  removed: Scyther finds attacks on all 6 initiator claims (a man in the middle
+  encapsulates to the initiator's key itself). So the model does detect a
+  broken protocol, and the code-level test of the same attack agrees.
+- **A modelling pitfall, found and documented.** The first model declared the
+  ephemeral KEM key pair with `inversekeys(pkE, skE)`. Scyther v1.3.0 treats a
+  user-declared pair like that as *symmetric*: its adversary decrypted
+  {m}pkE(x) with pkE(x). That made 8 claims fail spuriously. Minimal models
+  show the broken behaviour and show that the built-in pk(·)/sk(·) pair works
+  correctly: authenticated key Ok, unauthenticated key Fail. The model
+  therefore uses pk(ne)/sk(ne).
+- **Outside the symbolic model.** Forward secrecy, timestamps, revocation and
+  replay caches are not modelled in Scyther; they are tested in code
+  (`qsv2v.pqc.attack_suite`).

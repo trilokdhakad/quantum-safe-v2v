@@ -2,15 +2,19 @@
  * PQ-V2V-AKE -- Scyther model (symbolic, Dolev-Yao attacker).
  *
  * Mirrors qsv2v/pqc/pq_v2v_ake.py:
- *   m1  I -> R : pkE(ne), NI, cert(I), {pkE(ne), NI, I}sk(I)
- *   m2  R -> I : {ss}pkE(ne), NR, cert(R), {th2}sk(R), MAC(KcR, th3)
+ *   m1  I -> R : pk(ne), NI, cert(I), {pk(ne), NI, I}sk(I)
+ *   m2  R -> I : {ss}pk(ne), NR, cert(R), {th2}sk(R), MAC(KcR, th3)
  *   m3  I -> R : MAC(KcI, th3, macR)
  *
  * Modelling choices:
- *  - The ephemeral ML-KEM key pair is pkE(ne) / skE(ne) for a fresh nonce ne
- *    that is never sent; pkE/skE are declared inverse keys and skE is a secret
- *    function, so only the role that chose ne can decapsulate. Encapsulation of
- *    the fresh secret ss is modelled as public-key encryption {ss}pkE(ne).
+ *  - The ephemeral ML-KEM key pair is Scyther's built-in asymmetric pair
+ *    pk(ne) / sk(ne) applied to a fresh nonce ne that is never sent, so only
+ *    the role that chose ne can decapsulate. Encapsulation of the fresh secret
+ *    ss is modelled as public-key encryption {ss}pk(ne).
+ *    (A user-declared pair `inversekeys(pkE, skE)` is NOT used: in Scyther
+ *    v1.3.0 the adversary decrypts {m}pkE(x) with pkE(x) itself, i.e. the pair
+ *    is treated as symmetric. Minimal test models showing this, and showing the
+ *    built-in pair behaves correctly, are in verification/sanity/.)
  *  - Pseudonym certificates are the authority's signature binding a pseudonym
  *    to its public key; Scyther's built-in pk(X)/sk(X) with honest agents
  *    models exactly "the key certified for X". Revocation and timestamps are
@@ -26,9 +30,6 @@
  */
 
 hashfunction KDF, MAC, H;
-const pkE: Function;
-secret skE: Function;
-inversekeys (pkE, skE);
 
 protocol PQV2VAKE(I, R)
 {
@@ -39,14 +40,14 @@ protocol PQV2VAKE(I, R)
     var NR: Nonce;
     var ss: Nonce;
 
-    send_1(I, R, pkE(ne), NI, {pkE(ne), NI, I}sk(I));
-    recv_2(R, I, {ss}pkE(ne), NR,
-           {H(pkE(ne), NI, I, {ss}pkE(ne), NR, R)}sk(R),
-           MAC(KDF(ss, H(pkE(ne), NI, I, {ss}pkE(ne), NR, R), R), NI, NR));
-    send_3(I, R, MAC(KDF(ss, H(pkE(ne), NI, I, {ss}pkE(ne), NR, R), I), NI, NR, R));
+    send_1(I, R, pk(ne), NI, {pk(ne), NI, I}sk(I));
+    recv_2(R, I, {ss}pk(ne), NR,
+           {H(pk(ne), NI, I, {ss}pk(ne), NR, R)}sk(R),
+           MAC(KDF(ss, H(pk(ne), NI, I, {ss}pk(ne), NR, R), R), NI, NR));
+    send_3(I, R, MAC(KDF(ss, H(pk(ne), NI, I, {ss}pk(ne), NR, R), I), NI, NR, R));
 
     claim_I1(I, Secret, ss);
-    claim_I2(I, Secret, KDF(ss, H(pkE(ne), NI, I, {ss}pkE(ne), NR, R)));
+    claim_I2(I, Secret, KDF(ss, H(pk(ne), NI, I, {ss}pk(ne), NR, R)));
     claim_I3(I, Alive);
     claim_I4(I, Weakagree);
     claim_I5(I, Niagree);

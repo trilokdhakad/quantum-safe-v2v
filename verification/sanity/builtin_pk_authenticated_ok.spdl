@@ -1,0 +1,6 @@
+protocol T4(I, R) {
+  role I { fresh ne: Nonce; var s: Nonce;
+    send_1(I, R, pk(ne), {pk(ne), R}sk(I)); recv_2(R, I, {s}pk(ne)); }
+  role R { var EK: Ticket; fresh s: Nonce;
+    recv_1(I, R, EK, {EK, R}sk(I)); send_2(R, I, {s}EK); claim_r(R, Secret, s); }
+}
