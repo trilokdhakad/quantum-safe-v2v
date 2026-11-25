@@ -13,7 +13,7 @@ post-quantum cryptography (ML-KEM / ML-DSA). The project plan is in
 | 2 | Channel noise, photon loss, intercept-resend Eve | Done |
 | 3 | Cascade, privacy amplification | Done |
 | 4 | Attacks on the three base papers | Done |
-| 5 | PQ-V2V-AKE protocol | Not started |
+| 5 | PQ-V2V-AKE protocol | In progress: protocol, broadcast, attack tests done; Scyther run pending |
 | 6 | V2V network simulation | Not started |
 | 7 | Experiments E1–E10 | Not started |
 | 8 | Dashboard (optional) | Not started |
@@ -47,13 +47,21 @@ qsv2v/
 │   ├── bb84.py         prepare -> transmit -> measure -> sift; BB84Result
 │   └── backends/       numpy_backend.py, qiskit_backend.py
 ├── crypto/         seeded DRBG, P-256 arithmetic (ecdsa), SHA-256, AES-GCM
-├── pqc/kem.py      ML-KEM-768: liboqs or kyber-py (deterministic), interoperable
+├── pqc/            post-quantum layer
+│   ├── kem.py          ML-KEM-768: liboqs or kyber-py (deterministic), interoperable
+│   ├── sig.py          ML-DSA-44 (liboqs / dilithium-py), Falcon-512, ECDSA P-256 baseline
+│   ├── certs.py        pseudonym certificate authority, enrollment, revocation (CRL)
+│   ├── pq_v2v_ake.py   PQ-V2V-AKE handshake (+ hybrid X25519 mode)
+│   ├── broadcast.py    signed safety messages, certificate digests, size table (E8)
+│   └── attack_suite.py every Phase 4 attack class re-run against PQ-V2V-AKE (E5)
 ├── attacks/        the three base papers as printed + attacks + Shor demo
 │   ├── psrs_d2d/       protocol.py, attacks.py
 │   ├── pslap/          protocol.py, attacks.py
 │   ├── p2as_ioav/      protocol.py, attacks.py
 │   └── shor_demo.py
 ├── sim/            later phases
+verification/       Scyther model of PQ-V2V-AKE
+scripts/            build_showcase_data.py (datasets for the progress page)
 experiments/  verification/  dashboard/  results/  docs/
 tests/              pytest suite, one file per module
 ```
@@ -364,3 +372,86 @@ for N = 15, 15 for N = 21. The modular-multiplication oracle is a classically
 computed permutation matrix, which is fine at this size but not scalable.
 Breaking P-256 would need about 2,330 logical qubits (Roetteler et al. 2017).
 That is why "harvest now, decrypt later" is the practical threat.
+
+## PQ-V2V-AKE: our post-quantum protocol (Phase 5, in progress)
+
+```bash
+python -m qsv2v.attacks --pq        # attacks on the papers, then the same classes against ours
+python -m qsv2v.pqc.attack_suite    # just the attacks against PQ-V2V-AKE
+```
+
+```python
+from qsv2v.pqc.pq_v2v_ake import setup_network, handshake
+
+net = setup_network(2, seed=1)  # authority + 2 enrolled vehicles (hybrid=True adds X25519)
+tr = handshake(*net.vehicles, net.clock)
+assert tr.initiator.key == tr.responder.key
+print(tr.sizes)  # bytes of m1, m2, m3
+```
+
+Three messages:
+
+    m1  I -> R : ek_e, Cert_I, N_I, T_I, Sign_I(m1)
+    m2  R -> I : ct = Encaps(ek_e), Cert_R, N_R, T_R, Sign_R(transcript), MAC_R
+    m3  I -> R : MAC_I
+
+The session key is HKDF over the ephemeral ML-KEM-768 secret and the whole
+transcript. ek_e is fresh for every session and its decapsulation key is
+erased after use. Certificates are ML-DSA-44 signatures from a pseudonym
+authority over keys the vehicles generated themselves. Each vehicle rotates
+through a batch of short-lived pseudonyms (300 s by default). Revocation
+works through a signed CRL that covers every pseudonym of a vehicle.
+
+**Each design rule answers a Phase 4 failure** (written into the plan):
+the session key comes only from ephemeral secrets (PSRS-D2D, P²AS-IoAV);
+there is no key escrow (P²AS-IoAV); certificates are signatures rather than
+algebra (PSRS-D2D); the initiator is authenticated before any key work, with
+a replay cache (P²AS-IoAV); and there are no static identifiers or password
+verifiers (PSLAP).
+
+### Every Phase 4 attack class against PQ-V2V-AKE (measured: 8/8 blocked)
+
+| Attack (analogue of) | What the attacker tried | Outcome |
+| --- | --- | --- |
+| Passive key recovery (PSRS-D2D 1) | Key schedule on all 32 public values | 0 matches |
+| Forward secrecy (PSRS-D2D 2, P²AS 2) | Both vehicles' signing keys + authority key as decapsulation keys | 0 matches. Control: with the ephemeral key it *would* succeed |
+| Capture two vehicles, forge (PSRS-D2D 3) | Self-signed certificate, grafted certificate, victim's certificate with own signature | All rejected |
+| Forged / replayed message 1 (P²AS 1) | Observed certificate + own signature, swapped key, replay in window, replay after 60 s, revoked vehicle | All rejected |
+| MITM swaps the KEM ciphertext | Re-encapsulate to the initiator's ephemeral key | Rejected (responder signature) |
+| Linking sessions (PSLAP 1) | Byte windows shared by one vehicle's two pseudonyms but absent from another vehicle's | 0. Control: under one pseudonym, 3,773 found |
+| Password guessing (PSLAP 2) | Read the vehicle's stored state | No password verifier exists |
+| Quantum attacker in hybrid mode (Shor) | Given the X25519 secret | Key still needs the ML-KEM secret: 0 matches |
+
+**Honest limit:** two sessions under the *same* pseudonym are linkable, which
+is true of IEEE 1609.2 pseudonyms as well. The rotation interval is the
+privacy setting.
+
+### Measured costs
+
+- **Handshake:** 3.6 ms total compute on liboqs (about 115 ms in pure Python).
+  m1 ≈ 7.5 KB, m2 ≈ 7.4 KB, m3 = 38 B. The first two messages each span about
+  6 radio frames, because each carries a full ML-DSA certificate (3.8 KB).
+  Phase 6 measures what that costs on the channel.
+- **Broadcast safety messages (E8)**, 200-byte payload, real signatures,
+  certificate attached once per second, digest otherwise:
+
+| Configuration | Certificate | With certificate | With digest | Fits 1,400 B? |
+| --- | --- | --- | --- | --- |
+| ECDSA P-256 (today) | 221 B | 523 B | 310 B | yes / yes |
+| Falcon-512, Falcon-512 authority | 1,643 B | 2,535 B | 899 B | no / **yes** |
+| Falcon-512, ML-DSA-44 authority | 3,410 B | 4,301 B | 904 B | no / yes |
+| ML-DSA-44, ML-DSA-44 authority | 3,824 B | 6,481 B | 2,665 B | no / **no** |
+
+This confirms E8's hypothesis: ML-DSA-44 alone overflows a frame even with a
+digest, and Falcon-512 with a digest fits. Messages that carry a full
+post-quantum certificate need fragmenting or separate distribution.
+
+### Formal verification (pending)
+
+`verification/pq_v2v_ake.spdl` models the handshake for Scyther. It claims
+secrecy of the KEM secret and the session key, plus aliveness, weak
+agreement, non-injective agreement and synchronisation, for both roles: the
+same claim set the base papers report. The ephemeral KEM key is modelled as
+the inverse key pair pkE(ne)/skE(ne). The model has **not been run yet**. The
+official Scyther Windows build (v1.3.0) is downloaded outside the project,
+but running it needs your approval.
