@@ -14,7 +14,7 @@ post-quantum cryptography (ML-KEM / ML-DSA). The project plan is in
 | 3 | Cascade, privacy amplification | Done |
 | 4 | Attacks on the three base papers | Done |
 | 5 | PQ-V2V-AKE protocol | Done |
-| 6 | V2V network simulation | Not started |
+| 6 | V2V network simulation | Done |
 | 7 | Experiments E1–E10 | Not started |
 | 8 | Dashboard (optional) | Not started |
 | 9 | Report | Not started |
@@ -59,9 +59,15 @@ qsv2v/
 │   ├── pslap/          protocol.py, attacks.py
 │   ├── p2as_ioav/      protocol.py, attacks.py
 │   └── shor_demo.py
-├── sim/            later phases
+├── sim/            V2V network simulation (SimPy)
+│   ├── mobility.py     2 km ring highway, 3 lanes each way
+│   ├── radio.py        802.11p airtime, CSMA/CA + EDCA, collisions, retries, fragmentation
+│   ├── vehicle.py      radio queue, crypto processor, model / real crypto back-ends
+│   ├── network.py      safety messages, handshakes, metrics, replay traces
+│   ├── profiles.py     measured sizes and timings per protocol
+│   └── __main__.py     python -m qsv2v.sim -> results/sim/*.csv
 verification/       Scyther model of PQ-V2V-AKE
-scripts/            build_showcase_data.py (datasets for the progress page)
+scripts/            build_showcase_data.py (progress-page datasets), run_steady_sweep.py
 experiments/  verification/  dashboard/  results/  docs/
 tests/              pytest suite, one file per module
 ```
@@ -488,3 +494,116 @@ script and the test suite):
 - **Outside the symbolic model.** Forward secrecy, timestamps, revocation and
   replay caches are not modelled in Scyther; they are tested in code
   (`qsv2v.pqc.attack_suite`).
+
+## V2V network simulation (Phase 6)
+
+```bash
+python -m qsv2v.sim                                   # sweep: 10-200 vehicles x 3 handshake types
+python -m qsv2v.sim --vehicles 50 --policy same_direction --seeds 0 1 2
+python -m qsv2v.sim --crypto real --vehicles 10       # real PQ-V2V-AKE and real signatures inside the sim
+python -m qsv2v.pqc.bench                             # E6: ms per crypto operation on this machine
+```
+
+Writes `results/sim/summary.csv` (one row per run), `handshakes.csv` (one row
+per handshake) and `bsm_pdr.csv` (safety-message delivery by distance), plus
+`crypto_profile.json` (the measured sizes and timings the runs used).
+
+**What is simulated** (`qsv2v/sim/`, SimPy discrete-event):
+
+- **Mobility** (`mobility.py`): a 2 km ring highway with 3 lanes each way at
+  90/108/126 km/h. Opposite-direction traffic closes at about 220 km/h, so
+  neighbours keep arriving and leaving.
+- **Radio** (`radio.py`): 802.11p at 6 Mbit/s, with real airtime per frame.
+  Carrier sensing and backoff use two EDCA classes: safety messages AC_VO,
+  handshakes AC_BE. Collisions include hidden terminals. Distance-dependent
+  decoding is 50% at the 300 m range edge. Unicast frames are retried up to 4
+  times. Messages over 1,400 B are fragmented, and lost if any fragment is.
+- **Vehicles** (`vehicle.py`, `network.py`): every vehicle signs and
+  broadcasts a safety message 10 times a second (Falcon-512, certificate once
+  a second, digest otherwise). Every receiver verifies on a single crypto
+  processor queue. When two vehicles within 200 m have verified each other's
+  certificate, the lower-numbered one starts a handshake. The policy is
+  either every neighbour or same direction only (platooning-style).
+- **Crypto costs** (`profiles.py`): real message sizes and real compute times,
+  measured by running the actual protocol code (liboqs). In `--crypto real`
+  mode the simulator runs PQ-V2V-AKE itself and signs and verifies every
+  safety message for real.
+
+**Validation**: in real-crypto mode the simulator's handshakes derive matching
+keys on both sides. Model mode and real mode agree: median handshake latency
+30.3 vs 30.7 ms (ML-DSA) and 3.5 vs 3.8 ms (classical), with identical frame
+counts (13 and 3) and bytes on air within 2%. Tests also cover hidden-terminal
+collisions, carrier sensing, retry exhaustion, determinism under a seed, and
+the latency floor on an empty channel (sum of frame airtimes).
+
+### Results (measured; `results/sim/`)
+
+Density is quoted as vehicles on the 2 km, 6-lane road: 50 vehicles is
+4.2 vehicles per km per lane, 100 is 8.3, 200 is 16.7.
+
+**1. Handshakes in steady state** (`scripts/run_steady_sweep.py`: 12 s runs,
+first 6 s discarded, 2 seeds per point, Falcon-512 safety messages
+throughout). The handshake runs with every neighbour that comes within 200 m:
+
+| Vehicles | Handshake | Success | Median latency | Within 100 ms | Channel busy |
+| --- | --- | --- | --- | --- | --- |
+| 10 | Classical / PQ-Falcon / PQ-ML-DSA | 100% / 100% / 100% | 4 / 18 / 32 ms | 100% / 100% / 100% | 7–8% |
+| 25 | Classical / PQ-Falcon / PQ-ML-DSA | 100% / 98% / 92% | 4 / 19 / 39 ms | 100% / 98% / 91% | 16–23% |
+| 50 | Classical / PQ-Falcon / PQ-ML-DSA | 95% / 93% / 71% | 11 / 35 / 109 ms | 93% / 86% / 35% | 37–57% |
+| 100 | Classical / PQ-Falcon / PQ-ML-DSA | 90% / 23% / 5% | 60 / 257 / 315 ms | 60% / 3% / 0% | 72–97% |
+| 200 | Classical / PQ-Falcon / PQ-ML-DSA | 25% / 1% / 0% | 259 / 288 / 299 ms | 3% / 0% / 0% | 96–98% |
+
+With handshakes only between vehicles travelling the same way
+(platooning-style), there are 5–8 times fewer handshakes at 50–100 vehicles,
+and every protocol lasts longer. At 50 vehicles: classical 97%, PQ-Falcon 91% and PQ-ML-DSA 89% of
+handshakes succeed, with median latencies of 8, 26 and 52 ms. At 100 vehicles:
+84%, 58% and 26%.
+
+**E9 hypothesis** ("latency stays under the 100 ms budget up to a measurable
+density"): the median stays under 100 ms up to 100 vehicles for classical,
+50 for PQ-Falcon and 25 for PQ-ML-DSA when every neighbour pair needs a
+session. With same-direction sessions only, that rises to 150, 100 and 50.
+
+**2. Safety messages alone** (no handshakes, 4 s runs, 2 seeds; delivery means
+received *and* verified within 300 m):
+
+| Vehicles | ECDSA (today) | Falcon-512 | ML-DSA-44 |
+| --- | --- | --- | --- |
+| 50 | 87% delivered, 14% busy | 70%, 39% busy | 35%, 79% busy |
+| 100 | 81%, 28% busy | 43%, 63% busy | 8%, 98% busy |
+| 200 | 71%, 45% busy | 19%, 95% busy | 3%, 99% busy |
+
+**What this means:**
+
+- **The bigger bottleneck is the post-quantum signature on every safety
+  message, not the handshake.** Ten signed messages a second per vehicle with
+  Falcon-512 (900 B) saturate the channel from about 100 vehicles, and with
+  ML-DSA-44 (2,665 B) from about 50, with no handshakes at all. Making V2V
+  broadcast quantum-safe needs more than a signature swap. It needs a lower
+  signing rate, signing only some messages, smaller certificates, or
+  congestion control (as ETSI DCC already does for today's messages).
+- **The handshake itself is fast**: 4 ms classical, 18 ms Falcon and 32 ms
+  ML-DSA on an empty channel, against a 100 ms budget. Its cost is the bytes
+  it puts on a shared channel: 13 frames per ML-DSA handshake against 3 for
+  classical. That matters once the channel is busy.
+- **Falcon beats ML-DSA throughout**, because its signatures and certificates
+  are smaller. That supports the plan's choice of Falcon for broadcast, and
+  suggests Falcon certificates for the handshake too.
+
+**Method notes (state these in the report):**
+
+- **Short runs include a start-up burst.** The first sweep (4 s runs, still in
+  `results/sim/summary.csv`) includes the burst in which every vehicle
+  discovers all its neighbours at once. That overstates congestion: at 50
+  vehicles PQ-ML-DSA succeeded 26% of the time versus 72% in steady state.
+  The tables above use steady state; the safety-message-only runs have no
+  handshakes and are not affected.
+- **Payload size is an assumption.** Safety-message payloads are 200 bytes.
+- **Fragmentation is hypothetical.** Messages over 1,400 B are fragmented,
+  which real 802.11p/WSMP cannot do; it prices oversized post-quantum
+  messages rather than describing deployed behaviour.
+- **Compute times are from this laptop** (`cpu_slowdown` = 1). An embedded
+  on-board unit would be slower, but compute is not the bottleneck here: the
+  busiest crypto processor in any steady-state run was 1.5% busy.
+- **No SUMO traces.** The plan's stretch goal of SUMO mobility traces was not
+  attempted; the built-in highway model was used, as the risk table allowed.

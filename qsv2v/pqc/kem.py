@@ -72,3 +72,77 @@ class MLKEM768:
         from kyber_py.ml_kem import ML_KEM_768
 
         return ML_KEM_768.decaps(secret_key, ciphertext)
+
+
+class X25519KEM:
+    """Classical KEM from X25519 (DHKEM-style), same interface as :class:`MLKEM768`.
+
+    Used for the classical baseline: the same PQ-V2V-AKE code with this KEM and
+    ECDSA signatures is today's elliptic-curve design, so its sizes and timings
+    are measured with identical framing. ss = HKDF(dh || enc || pk).
+    """
+
+    name = "X25519"
+
+    def __init__(self, backend: str = "cryptography", rng: DeterministicRNG | None = None):
+        self.rng = rng
+
+    def _priv(self):
+        import os
+
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
+        return X25519PrivateKey.from_private_bytes(
+            self.rng.bytes(32) if self.rng else os.urandom(32)
+        )
+
+    @staticmethod
+    def _raw_pub(priv) -> bytes:
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+        return priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+    @staticmethod
+    def _ss(dh: bytes, enc: bytes, pk: bytes) -> bytes:
+        import hashlib
+        import hmac
+
+        prk = hmac.new(b"X25519-KEM", dh + enc + pk, hashlib.sha256).digest()
+        return hmac.new(prk, b"shared secret\x01", hashlib.sha256).digest()
+
+    def keygen(self) -> KEMKeyPair:
+        from cryptography.hazmat.primitives.serialization import (
+            Encoding,
+            NoEncryption,
+            PrivateFormat,
+        )
+
+        priv = self._priv()
+        sk = priv.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+        return KEMKeyPair(self._raw_pub(priv), sk)
+
+    def encaps(self, public_key: bytes) -> tuple[bytes, bytes]:
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PublicKey
+
+        eph = self._priv()
+        enc = self._raw_pub(eph)
+        dh = eph.exchange(X25519PublicKey.from_public_bytes(public_key))
+        return enc, self._ss(dh, enc, public_key)
+
+    def decaps(self, secret_key: bytes, ciphertext: bytes) -> bytes:
+        from cryptography.hazmat.primitives.asymmetric.x25519 import (
+            X25519PrivateKey,
+            X25519PublicKey,
+        )
+
+        priv = X25519PrivateKey.from_private_bytes(secret_key)
+        dh = priv.exchange(X25519PublicKey.from_public_bytes(ciphertext))
+        return self._ss(dh, ciphertext, self._raw_pub(priv))
+
+
+def get_kem(name: str, backend: str = "kyber-py", rng: DeterministicRNG | None = None):
+    if name == "ML-KEM-768":
+        return MLKEM768(backend, rng)
+    if name == "X25519":
+        return X25519KEM(rng=rng)
+    raise ValueError(f"unknown KEM {name!r}")

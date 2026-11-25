@@ -323,18 +323,29 @@ def setup_network(
     lifetime: int = 300,
     kem_backend: str = "kyber-py",
     sig_backend: str = "dilithium-py",
+    sig_alg: str = "ML-DSA-44",
+    kem_alg: str = "ML-KEM-768",
+    ca_alg: str | None = None,
 ) -> Network:
-    """Authority + enrolled vehicles, each holding ``n_pseudonyms`` consecutive pseudonyms."""
+    """Authority + enrolled vehicles, each holding ``n_pseudonyms`` consecutive pseudonyms.
+
+    ``sig_alg`` / ``kem_alg`` / ``ca_alg`` select the primitives (the authority
+    uses ``sig_alg`` unless ``ca_alg`` is given). With sig_alg="ECDSA-P256" and
+    kem_alg="X25519" the same protocol is today's classical design.
+    """
     from qsv2v.pqc.certs import Authority, enroll_vehicle
-    from qsv2v.pqc.sig import MLDSA44
+    from qsv2v.pqc.kem import get_kem
+    from qsv2v.pqc.sig import get_scheme
 
     rng = DeterministicRNG(seed)
     clock = SimClock()
-    authority = Authority(rng.fork("ca"), MLDSA44(sig_backend, rng.fork("ca-sig")))
+    authority = Authority(
+        rng.fork("ca"), get_scheme(ca_alg or sig_alg, sig_backend, rng.fork("ca-sig"))
+    )
     vehicles, ids = [], []
     for k in range(n_vehicles):
         vr = rng.fork(f"vehicle-{k}")
-        scheme = MLDSA44(sig_backend, vr.fork("sig"))
+        scheme = get_scheme(sig_alg, sig_backend, vr.fork("sig"))
         real_id = vr.bytes(17)  # e.g. a VIN; known only to the vehicle and the authority
         creds = enroll_vehicle(authority, real_id, scheme, n_pseudonyms, clock.now(), lifetime)
         vehicles.append(
@@ -343,7 +354,7 @@ def setup_network(
                 scheme=scheme,
                 authority_pk=authority.public_key,
                 authority_scheme=authority.scheme,
-                kem=MLKEM768(kem_backend, vr.fork("kem")),
+                kem=get_kem(kem_alg, kem_backend, vr.fork("kem")),
                 rng=vr.fork("protocol"),
                 config=Config(hybrid=hybrid),
             )

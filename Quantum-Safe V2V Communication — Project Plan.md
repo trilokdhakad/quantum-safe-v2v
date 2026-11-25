@@ -162,6 +162,7 @@ Nine phases, each ending with working, tested code before the next starts; Phase
 - **Why:** shows behaviour at scale, not just between two cars.
 - **How:** discrete-event simulation in Python (SimPy) with a simple highway mobility model; configurable vehicle density, speed, packet loss and message rate; measure handshake latency, bandwidth, message size vs the \~1400-byte packet limit. Stretch: mobility traces from SUMO.
 - **Done when:** runs with 10–200 vehicles and logs metrics to CSV.
+- **Outcome (done):** SimPy simulator with 802.11p airtime, CSMA/CA + EDCA, collisions (incl. hidden terminals), MAC retries and fragmentation; per-vehicle crypto queue; costs from real measured liboqs timings, validated against a real-crypto mode that runs PQ-V2V-AKE inside the simulation (latency 30.3 vs 30.7 ms). Runs 10–200 vehicles to CSV. Findings: median handshake latency stays under 100 ms up to 100 / 50 / 25 vehicles (classical / PQ-Falcon / PQ-ML-DSA, every-neighbour sessions; 150 / 100 / 50 same-direction only). The larger bottleneck is post-quantum signatures on safety messages: with no handshakes, Falcon-512 saturates the channel from ~100 vehicles and ML-DSA-44 from ~50 (ECDSA copes to 200). Short runs include a start-up burst and overstate congestion; steady-state (12 s, 6 s warm-up) results are the reference. SUMO stretch goal not attempted.
 
 ### Phase 7 — Experiments and analysis
 
@@ -194,7 +195,7 @@ Ten experiments make up the results chapter; each produces one figure or table.
 | E6 | Crypto timing | ECDH, ECDSA, ML-KEM, ML-DSA, Falcon | ms per operation (laptop; Raspberry Pi if available) | PQC is within the same order as ECC; signing is the slowest step |
 | E7 | Handshake cost | PSLAP, PSRS-D2D, P²AS-IoAV, PQ-V2V-AKE (+ hybrid) | Total compute (ms), bytes on air, round trips | Ours costs more bytes, adds forward secrecy and revocation |
 | E8 | Message size vs packet limit | Signature scheme | Bytes per safety message | ML-DSA alone overflows a BSM; Falcon + certificate digest fits |
-| E9 | Network scale | 10–200 vehicles, speed, density | Handshake latency, channel load, success rate | Latency stays under the 100 ms budget up to a measurable density |
+| E9 | Network scale | 10–200 vehicles, speed, density | Handshake latency, channel load, success rate | Latency stays under the 100 ms budget up to a measurable density (Phase 6 measured: 100 / 50 / 25 vehicles for classical / Falcon / ML-DSA) |
 | E10 | QKD vs PQC | Both approaches in V2V | Security basis, key rate, hardware needs, practicality | PQC is deployable now; QKD is strongest in theory but needs line-of-sight optics |
 
 **Security evaluation** (not experiments, but part of the results): formal verification output from Scyther/Tamarin, and a feature comparison table of all four protocols (mutual authentication, anonymity, unlinkability, forward secrecy, quantum resistance, revocation, capture resistance).
@@ -223,7 +224,7 @@ The deadline is 5 days, so phases run back to back and the dashboard is dropped 
 1. Day 1 — Phases 1–3: repo, BB84 on Qiskit + NumPy, noise, loss, Eve, Cascade, privacy amplification, tests **(done; Phase 4 also finished on Day 1)**
 2.  Day 2 — Phase 4: reference implementations of the three papers as baselines + attack scripts + Shor demo (kept to one day: it is evidence, not the contribution) **(done early; Day 2 now starts Phase 5)**
 3.  Day 3 — Phase 5: PQ-V2V-AKE protocol, broadcast signing, Scyther model **(done on Day 1)**
-4.  Day 4 — Phases 6–7: V2V network simulation, run E1–E10, figures
+4.  Day 4 — Phases 6–7: V2V network simulation, run E1–E10, figures **(Phase 6 done on Day 1)**
 5.  Day 5 — Phase 9: report, README, slides; Phase 8 dashboard only if time allows
 
 **Team split (suggested):**

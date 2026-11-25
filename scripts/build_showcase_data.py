@@ -13,6 +13,10 @@ Writes JSON files {rows, meta} to results/showcase/ (default):
 * defenses.json      -- every attack class re-run against PQ-V2V-AKE
 * bsm_sizes.json     -- signed safety-message sizes per signature scheme
 * scyther.json       -- Scyther claim verdicts (verification/results.txt)
+* sim_steady.json    -- V2V simulation with handshakes, steady state (results/sim/steady)
+* sim_broadcast.json -- V2V simulation, safety messages only (results/sim/summary.csv)
+* crypto_ops.json    -- ms per primitive operation on this machine (E6)
+* trace_*.json       -- recorded simulation traces for the animated replay
 
 Every number comes from running the code with fixed seeds; nothing is typed in
 except phase names and the documented paper errors.
@@ -314,6 +318,39 @@ def build_scyther() -> list[dict]:
     return rows
 
 
+def build_sim_runs(path: Path, keep=lambda r: True) -> list[dict]:
+    """Rows of a simulation summary.csv (written by python -m qsv2v.sim), numbers parsed."""
+    import csv
+
+    rows = []
+    with path.open(encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            out = {}
+            for k, v in r.items():
+                try:
+                    out[k] = float(v) if v not in ("", "None") else None
+                except ValueError:
+                    out[k] = v
+            if keep(out):
+                rows.append(out)
+    return rows
+
+
+def build_crypto_ops() -> list[dict]:
+    from qsv2v.pqc.bench import primitive_table
+
+    return primitive_table()
+
+
+def copy_traces(out: Path) -> None:
+    import shutil
+
+    for p in (ROOT / "results" / "sim" / "traces").glob("trace_*.json"):
+        name = p.name.replace("trace_pq-mldsa", "trace_pq_mldsa")
+        shutil.copy(p, out / name)
+        print(f"  {name}: copied")
+
+
 def main() -> None:
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "results" / "showcase"
     out.mkdir(parents=True, exist_ok=True)
@@ -347,6 +384,25 @@ def main() -> None:
     write(out, "bsm_sizes.json", build_bsm_sizes(), "size_table(), 200-byte payload")
     print("scyther")
     write(out, "scyther.json", build_scyther(), "verification/results.txt (Scyther v1.3.0)")
+    print("sim steady")
+    write(
+        out,
+        "sim_steady.json",
+        build_sim_runs(ROOT / "results" / "sim" / "steady" / "summary.csv"),
+        "scripts/run_steady_sweep.py: 12 s runs, first 6 s discarded",
+    )
+    print("sim broadcast")
+    write(
+        out,
+        "sim_broadcast.json",
+        build_sim_runs(
+            ROOT / "results" / "sim" / "summary.csv", lambda r: r["handshake_profile"] == "none"
+        ),
+        "python -m qsv2v.sim --handshake none --bsm ecdsa falcon mldsa (4 s runs)",
+    )
+    print("crypto ops")
+    write(out, "crypto_ops.json", build_crypto_ops(), "qsv2v.pqc.bench.primitive_table()")
+    copy_traces(out)
     print("tests")
     write(out, "tests.json", build_tests(), "pytest --junitxml over tests/")  # noqa: E501,E702
 
