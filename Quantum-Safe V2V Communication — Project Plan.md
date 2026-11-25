@@ -176,6 +176,7 @@ Nine phases, each ending with working, tested code before the next starts; Phase
 
 - **What:** a web UI to run BB84 and the V2V simulation live and see photons, QBER and keys.
 - **How:** Streamlit or a FastAPI backend with a small React front end.
+- **Outcome (done):** built into the public project page (GitHub Pages) instead of Streamlit, so it needs no install: a live BB84 lab (Eve and noise sliders; photons, bases, sifted keys with errors, QBER vs theory, abort decision, key estimate) plus a replay of recorded steady-state V2V runs. The lab's JavaScript physics is tested against the Python theory under Node (tests/test_web_bb84.py).
 
 ### Phase 9 — Report
 
@@ -226,7 +227,7 @@ The deadline is 5 days, so phases run back to back and the dashboard is dropped 
 2.  Day 2 — Phase 4: reference implementations of the three papers as baselines + attack scripts + Shor demo (kept to one day: it is evidence, not the contribution) **(done early; Day 2 now starts Phase 5)**
 3.  Day 3 — Phase 5: PQ-V2V-AKE protocol, broadcast signing, Scyther model **(done on Day 1)**
 4.  Day 4 — Phases 6–7: V2V network simulation, run E1–E10, figures **(Phase 6 done on Day 1; Phase 7 done on Day 1)**
-5.  Day 5 — Phase 9: report, README, slides; Phase 8 dashboard only if time allows
+5.  Day 5 — Phase 9: report, README, slides; Phase 8 dashboard only if time allows **(Phase 8 done on Day 1)**
 
 **Team split (suggested):**
 

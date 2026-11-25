@@ -11,7 +11,7 @@
 
 <nav class="nav"><div class="wrap">
   <b>QSV2V</b>
-  <a href="#problem">Problem</a><a href="#qkd">1 · QKD</a><a href="#attacks">2 · Attacks</a>
+  <a href="#problem">Problem</a><a href="#qkd">1 · QKD</a><a href="#lab">Try BB84</a><a href="#attacks">2 · Attacks</a>
   <a href="#protocol">3 · Our protocol</a><a href="#network">4 · Network</a>
   <a href="#experiments">Experiments</a><a href="#conclusions">Conclusions</a>
   <a href="https://github.com/trilokdhakad/quantum-safe-v2v">Code ↗</a>
@@ -29,7 +29,8 @@
     <div class="stat"><div class="v"><span data-bind="tests_passed">–</span></div><div class="l">automated tests pass, fixed random seeds</div></div>
   </div>
   <div class="links">
-    <a class="btn solid" href="#network">Watch the simulation</a>
+    <a class="btn solid" href="#lab">Run BB84 yourself</a>
+    <a class="btn" href="#network">Watch the simulation</a>
     <a class="btn" href="https://github.com/trilokdhakad/quantum-safe-v2v">Source code on GitHub</a>
   </div>
 </div></header>
@@ -52,6 +53,10 @@
   <div class="eyebrow">Part 1 · Quantum key distribution</div>
   <h2>QKD works as theory says, but distance limits it</h2>
   <p class="intro">In BB84, Alice sends single photons in random bases; Bob measures in random bases; they keep the bits where the bases matched and compare a sample. An intercept-resend eavesdropper must guess bases too, and her wrong guesses show up as errors (QBER).</p>
+
+  <h3>Try it: run BB84 in your browser</h3>
+  <p class="note">Choose how many photons Eve intercepts and how noisy the channel is, then send. Each column below is one photon: + and × are the two bases; Eve's cell shows the basis she guessed and the bit she resent. Photons where Alice's and Bob's bases differ are discarded (faded). Errors in the kept bits are what give Eve away.</p>
+  <div class="card" id="lab"></div>
 
   <h3>An eavesdropper cannot hide</h3>
   <p class="note">200,000 photons per point. Dots are simulated, lines are the exact formula Q = e + f/4 − f·e/2 (e = channel noise, f = fraction intercepted). Largest deviation from theory: <b data-bind="max_z">–</b> standard errors over <span data-bind="qber_points">–</span> settings.</p>
@@ -179,5 +184,7 @@ pytest -q                        # the test suite</pre>
 
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
 <script src="assets/app.js"></script>
+<script src="assets/bb84.js"></script>
+<script src="assets/lab.js"></script>
 </body>
 </html>

@@ -20,7 +20,7 @@ The project plan is in
 | 5 | PQ-V2V-AKE protocol | Done |
 | 6 | V2V network simulation | Done |
 | 7 | Experiments E1–E10 | Done |
-| 8 | Dashboard (optional) | Not started |
+| 8 | Dashboard (optional): live BB84 lab on the project page | Done |
 | 9 | Report | Not started |
 
 ## Setup
@@ -709,3 +709,27 @@ V2V, since free-space loss to a moving vehicle is larger and varies.
   records the cost of every operation and warms up first, as the profile
   measurement does. The model runs with the costs real mode actually observed,
   over all 13 handshakes. It passed 40 of 40 runs under 8-way parallel load.
+
+## Live BB84 lab on the project page (Phase 8)
+
+The plan's optional dashboard is part of the public project page
+(https://trilokdhakad.github.io/quantum-safe-v2v/#lab) rather than a separate
+Streamlit app, so anyone can use it without installing anything:
+
+- **Run BB84 yourself.** Set how many photons Eve intercepts and how noisy
+  the channel is, then send 20,000 photons. The first 16 appear one per
+  column, with Alice's bit and basis, Eve's guess, Bob's basis and bit, and
+  whether the photon survives sifting. Below them are both sifted keys with
+  errors highlighted, the QBER estimated from a 10% sample against the
+  formula, the 11% abort decision and the estimated secret key length.
+- **The V2V simulation** is replayed from recorded steady-state runs
+  (`scripts/record_traces.py`) rather than run live, because a 60-vehicle run
+  takes seconds of real crypto timing in Python.
+
+The lab's physics is a small script (`docs/assets/bb84.js`, the same model
+as the NumPy backend). `tests/test_web_bb84.py` runs it under Node and checks
+it against the Python theory: QBER within 4 standard errors at six
+noise/Eve settings, a 50% sift ratio, repeatable seeds, the abort rule, and
+the key reaching zero just above 10% QBER. The lab's key length is an
+estimate, n(1 − (1 + f)h(Q)) − 131 with f = 1.16 measured in E4. The Python
+pipeline runs real Cascade and privacy amplification.
