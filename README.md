@@ -22,6 +22,7 @@ The project plan is in
 | 7 | Experiments E1–E10 | Done |
 | 8 | Dashboard (optional): live BB84 lab on the project page | Done |
 | 9 | Report | Not started |
+| 10 | Mathematical formulation (derivations, proofs) and classical/quantum security parameters | Done |
 
 ## Setup
 
@@ -78,6 +79,8 @@ scripts/            build_showcase_data.py (page datasets), build_site.py (-> do
                     record_traces.py (replay recordings), run_steady_sweep.py
 dashboard/          (optional Phase 8)
 results/            generated CSVs and figures (git-ignored; regenerate with the commands)
+report/math/        mathematical formulation: derivations, proofs, security parameters
+qsv2v/formulas.py   every derived closed form, as code (checked by tests/test_formulation.py)
 docs/               the public project page (GitHub Pages): index.html, assets/, data/
 tests/              pytest suite, one file per module
 ```
@@ -735,6 +738,57 @@ noise/Eve settings, a 50% sift ratio, repeatable seeds, the abort rule, and
 the key reaching zero just above 10% QBER. The lab's key length is an
 estimate, n(1 − (1 + f)h(Q)) − 131 with f = 1.16 measured in E4. The Python
 pipeline runs real Cascade and privacy amplification.
+
+## Mathematical formulation and security parameters (Phase 10)
+
+[`report/math/`](report/math/README.md) gives the mathematics behind every
+simulated result, derived step by step, with the prediction next to the
+measurement:
+
+| Chapter | Contents |
+| --- | --- |
+| [1. BB84](report/math/01_qkd.md) | sifting; QBER with noise, Eve and dark counts (Theorem 1.1, checked by exact enumeration); abort point; Cascade parity statistics; Toeplitz collision bound (Lemma 2); final key length and the 11% / 9.6% thresholds; key rate vs distance |
+| [2. Attacks](report/math/02_attacks.md) | the algebra of all seven attacks on the base papers, and Shor's period finding |
+| [3. PQ-V2V-AKE proofs](report/math/03_pq_v2v_ake_proofs.md) | Real-or-Random model with key leaks and capture; Theorem 1 (mutual authentication), Theorem 2 (session-key secrecy with perfect forward secrecy), Theorem 3 (hybrid mode); replay, anonymity and unlinkability |
+| [4. Network](report/math/04_network.md) | every message size derived from the FIPS 203/204 parameters and the wire format; 802.11p airtime; idle-channel handshake latency; channel busy ratio; E10 key rates |
+| [5. Security parameters](report/math/05_security_parameters.md) | (a) classical and quantum bit security of every primitive, with parameter sets; (b) the security properties of all four protocols against classical and quantum attackers |
+
+```bash
+python -m qsv2v.experiments             # produce results/ (if not already there)
+python scripts/build_math_tables.py     # write the theory-vs-measured tables into report/math/
+pytest tests/test_formulation.py        # every derivation checked against independent evidence
+```
+
+What the checks found (all generated from `results/`):
+
+- **Exact agreement:**
+  - The QBER formula Q = e + f/4 − fe/2 equals an exact rational
+    enumeration of the BB84 event tree.
+  - All 17 message and key sizes computed from the formulas equal the bytes
+    measured from liboqs and the real encodings.
+  - A two-car handshake on an idle channel takes exactly the predicted time
+    (mean over 150 seeds, every run inside the backoff bounds).
+- **Within statistical error:**
+  - QBER: every measured value of E1 is inside its 95% CI.
+  - Abort points: 0.44 predicted vs 0.43 measured, and 0.375 vs 0.380.
+  - Cascade's first-pass odd blocks.
+  - Key rate vs distance: 0.20 dB/km predicted, 0.203 measured; cut-off
+    182.1 km predicted, between 180 and 190 km measured.
+  - Channel busy ratio below saturation: every prediction inside the
+    measured CI.
+- **Explained differences:**
+  - The final key fraction runs 1–2σ above the asymptotic prediction. The
+    pipeline uses the *sampled* QBER, and E2 reuses its seeds across noise
+    levels.
+  - E2's "10.0%" zero-key point is the first grid point with no key; the
+    predicted 9.58% lies between it and the last grid point with a key.
+  - Post-quantum handshakes in a 10-car network take 15–17% longer than the
+    idle-channel prediction, because they have more frames that can meet
+    contention.
+- **Design finding (§3.8):** pseudonym validity windows must be aligned to a
+  global time grid. Otherwise a vehicle's enrollment time modulo the lifetime
+  links all of its pseudonyms. The simulation enrolls every vehicle at once,
+  which is why E5's linking test found nothing.
 
 ## References
 

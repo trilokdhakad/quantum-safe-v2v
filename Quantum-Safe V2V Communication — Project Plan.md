@@ -106,7 +106,7 @@ qsv2v/
 
 ## Phase-by-phase plan
 
-Nine phases, each ending with working, tested code before the next starts; Phases 1–7 are the core, 8 is optional, 9 is the report.
+Ten phases, each ending with working, tested code before the next starts; Phases 1–7 are the core, 8 is optional, 9 is the report, 10 (added later) is the mathematical formulation.
 
 ### Phase 1 — Project setup and BB84 core
 
@@ -182,6 +182,34 @@ Nine phases, each ending with working, tested code before the next starts; Phase
 
 - **What:** the final project report (structure below), README and slides.
 - **How:** written section by section as phases finish, so the last phase is editing, not writing from zero.
+
+### Phase 10 — Mathematical formulation and security parameters (added at the supervisor's request)
+
+- **What:**
+  - A step-by-step mathematical derivation behind every simulated result.
+  - Formal security proofs for PQ-V2V-AKE.
+  - A list of classical and quantum security parameters, both kinds: (a) bit-security levels and parameter sets, (b) security properties per protocol against classical and quantum attackers.
+- **Why:** the supervisor asked that, once the simulations are done, each result be backed by mathematics derived step by step; simulation alone shows *what* happens, the derivation shows *why*.
+- **How:**
+  - `report/math/` (five chapters, Markdown with LaTeX), with every closed form also in `qsv2v/formulas.py`.
+  - "Theory vs measured" tables generated from `results/` by `scripts/build_math_tables.py`.
+  - `tests/test_formulation.py` checks each derivation against independent evidence: exact enumeration, liboqs sizes, real encodings, the simulator, and fresh attack instances.
+  - Proofs are game-based in the Real-or-Random model, in the standard model (HMAC as a swap-PRF, per Backendal et al. 2023), with no random oracles, so they carry over to quantum adversaries.
+- **Done when:** every experiment E1–E10 has its governing equations derived, with the prediction next to the measurement; PQ-V2V-AKE has proofs of authentication and of key secrecy with forward secrecy; and the tests and the table check pass.
+- **Outcome (done):**
+  - Exact agreement:
+    - The QBER formula Q = e + f/4 − fe/2 is confirmed by exact rational enumeration.
+    - All 17 derived message and key sizes equal the measured bytes.
+    - The simulator's idle-channel handshake latency equals the formula (mean over 150 seeds).
+  - Agreement within statistical error: E1 QBER and abort points, Cascade parity statistics, E3 slope (0.20 vs 0.203 dB/km) and cut-off (182.1 km vs between 180 and 190 km), and the channel busy ratio below saturation.
+  - Explained differences:
+    - Key fraction 1–2σ high: the sampled QBER, plus E2 reusing its seeds.
+    - E2's 10.0% zero point is the first grid point with no key; the prediction is 9.58%.
+    - PQ handshakes are 15–17% above the idle-channel bound because of contention.
+  - Findings:
+    - E1's "38% with 2% noise" was printed from the formula, not measured. The measured value is also 38%.
+    - Pseudonym validity windows must sit on a global time grid, or a vehicle's enrollment time links its pseudonyms. The simulation enrolls all vehicles at once, so E5 could not see this.
+    - Theorem 3 (hybrid mode) rests on an explicitly stated concatenation-combiner assumption that is stronger than what has been proved for HMAC.
 
 ## Experiments and evaluation
 
