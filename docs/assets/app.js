@@ -25,23 +25,47 @@
     s.className = 'pill ' + kind; s.textContent = text; c.appendChild(s); return c;
   }
   function fail(el, msg) { el.replaceChildren(); const p = document.createElement('p'); p.className = 'fail'; p.textContent = msg || 'This could not be loaded.'; el.appendChild(p); }
+  // Legend entries: a line swatch by default; kind 'dot' (simulated points), 'box' (solid bar) or 'pale' (pale bar).
   function legend(el, items) {
     el.replaceChildren();
     items.forEach((it) => {
       const s = document.createElement('span'); const i = document.createElement('i');
-      i.style.background = it.dashed ? `repeating-linear-gradient(90deg, ${it.color} 0 5px, transparent 5px 8px)` : it.color;
+      if (it.kind === 'dot') i.className = 'dot';
+      if (it.kind === 'box' || it.kind === 'pale') i.className = 'box';
+      if (it.kind === 'pale') { i.style.background = `color-mix(in srgb, ${it.color} 32%, transparent)`; i.style.border = `1.5px solid ${it.color}`; } else {
+        i.style.background = it.dashed ? `repeating-linear-gradient(90deg, ${it.color} 0 5px, transparent 5px 8px)` : it.color;
+      }
       s.append(i, document.createTextNode(it.name)); el.appendChild(s);
     });
   }
-  const sup = { '-': '⁻', 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' };
-  const pow10 = (v) => '10' + String(Math.round(Math.log10(v))).split('').map((c) => sup[c]).join('');
+  const pct0 = d3.format('.0%');
+  // SVG text with "\n" line breaks.
+  function label(g, cls, x0, y0, str, anchor) {
+    const t = g.append('text').attr('class', cls).attr('x', x0).attr('y', y0).attr('text-anchor', anchor || 'start');
+    String(str).split('\n').forEach((line, i) => t.append('tspan').attr('x', x0).attr('dy', i ? '1.25em' : 0).text(line));
+    return t;
+  }
+  // Annotation numbers (zero points, abort crossings, dB/km fit, "1 in N" ticks): assets/figmath.js,
+  // tested under Node in tests/test_web_figures.py.
+  const { zeroAt, e3Slope, inWords } = window.FigMath;
 
   // ---------- line chart: one y-axis, thin lines, dots, reference line, nearest-x tooltip ----------
+  // Annotations, all in data units so each label sits on the data it explains:
+  //   zones  [{y0, y1?, label, below?}]  red-tinted band from y0 up to y1 (default: top); label at its
+  //                                      top-left, optional quiet `below` label at the bottom-right.
+  //   vlines [{x, at, label}]            dashed guide from the x-axis up to y = at, label to its left.
+  //   notes  [{x, y, label, dx?, dy?, anchor?}]  text at a data point ("\n" breaks lines).
+  //   rings  [{x, y}]                    ring markers at points of interest.
+  //   better 'up' | 'down'               which direction is better, shown above the plot.
+  //   series[i].endLabel                 direct label at the series' last point (nudged apart).
+  //   series[i].hollow(p)                draw that point hollow, and the line into it dashed.
+  //   point.note                         extra text for that point in the tooltip.
   function lineChart(el, opt) {
     el.replaceChildren();
-    const W = el.clientWidth || 640, H = Math.max(260, Math.min(380, W * 0.55));
+    const W = el.clientWidth || 640, H = Math.max(280, Math.min(400, W * 0.55));
     const narrow = W < 520;
-    const m = { top: 14, right: 18, bottom: 42, left: 54 };
+    const ends = !narrow && opt.series.some((s) => s.endLabel);
+    const m = { top: opt.better ? 28 : 14, right: ends ? (opt.endWidth || 96) : 18, bottom: 42, left: opt.left || 58 };
     const x = d3.scaleLinear().domain(opt.xDomain).range([m.left, W - m.right]);
     const y = opt.yLog
       ? d3.scaleLog().domain(opt.yDomain).range([H - m.bottom, m.top]).clamp(true)
@@ -58,6 +82,16 @@
       .attr('text-anchor', 'middle').text(opt.xLabel);
     svg.append('text').attr('class', 'axis-label').attr('transform', `translate(13,${(H - m.bottom + m.top) / 2}) rotate(-90)`)
       .attr('text-anchor', 'middle').text(opt.yLabel);
+    if (opt.better) svg.append('text').attr('class', 'hint').attr('x', m.left).attr('y', 13)
+      .text(opt.better === 'up' ? '↑ higher is better' : '↓ lower is better');
+    const [yBot, yTop] = y.domain();
+    (opt.zones || []).forEach((z) => {
+      const a = y(Math.min(z.y1 ?? yTop, yTop)), b = y(Math.max(z.y0, yBot));
+      svg.append('rect').attr('x', m.left).attr('width', W - m.left - m.right).attr('y', a).attr('height', Math.max(0, b - a))
+        .style('fill', css('--bad')).style('opacity', 0.07);
+      if (z.label) label(svg, 'zone-label', m.left + 8, a + 17, z.label);
+      if (z.below) label(svg, 'zone-label quiet', W - m.right - 6, H - m.bottom - 10, z.below, 'end');
+    });
     if (opt.refY != null) {
       svg.append('line').attr('x1', m.left).attr('x2', W - m.right).attr('y1', y(opt.refY)).attr('y2', y(opt.refY))
         .style('stroke', css('--ref')).attr('stroke-dasharray', '4 4').attr('stroke-width', 1.5);
@@ -73,14 +107,43 @@
       if (s.band) {
         const area = d3.area().x((p) => x(p.x)).y0((p) => y(Math.max(p.lo, opt.yLog ? opt.yDomain[0] : -Infinity)))
           .y1((p) => y(p.hi)).defined((p) => p.lo != null && p.hi != null && (!opt.yLog || p.hi > 0));
-        plot.append('path').attr('d', area(s.band)).style('fill', s.color).style('opacity', 0.16);
+        plot.append('path').attr('d', area(s.band)).style('fill', s.color).style('opacity', 0.11);
       }
-      if (s.line) plot.append('path').attr('d', line(s.points)).attr('fill', 'none').style('stroke', s.color)
-        .attr('stroke-width', 2).attr('stroke-dasharray', s.dashed ? '6 4' : null);
+      const hol = (p) => !!(s.hollow && s.hollow(p));
+      if (s.line && s.hollow) {
+        // Dashed underneath everywhere; solid only between trustworthy points, so the dashed part
+        // shows exactly the stretch that leads into hollow points.
+        plot.append('path').attr('d', line(s.points)).attr('fill', 'none').style('stroke', s.color)
+          .attr('stroke-width', 1.5).attr('stroke-dasharray', '3 4').style('opacity', 0.85);
+        plot.append('path').attr('d', d3.line().x((p) => x(p.x)).y((p) => y(p.y)).defined((p) => ok(p) && !hol(p))(s.points))
+          .attr('fill', 'none').style('stroke', s.color).attr('stroke-width', 2);
+      } else if (s.line) {
+        plot.append('path').attr('d', line(s.points)).attr('fill', 'none').style('stroke', s.color)
+          .attr('stroke-width', 2).attr('stroke-dasharray', s.dashed ? '6 4' : null);
+      }
       if (s.dots) plot.append('g').selectAll('circle').data(s.points.filter(ok)).join('circle')
-        .attr('cx', (p) => x(p.x)).attr('cy', (p) => y(p.y)).attr('r', 4).style('fill', s.color)
-        .style('stroke', css('--panel')).attr('stroke-width', 2);
+        .attr('cx', (p) => x(p.x)).attr('cy', (p) => y(p.y)).attr('r', 4)
+        .style('fill', (p) => (hol(p) ? css('--panel') : s.color))
+        .style('stroke', (p) => (hol(p) ? s.color : css('--panel'))).attr('stroke-width', 2);
     });
+    // Direct labels at line ends, pushed apart so they never overlap.
+    if (ends) {
+      const labs = opt.series.filter((s) => s.endLabel).map((s) => {
+        const pts = s.points.filter(ok); const p = pts[pts.length - 1];
+        return p && { text: s.endLabel, px: x(p.x), py: y(p.y) };
+      }).filter(Boolean).sort((a, b) => a.py - b.py);
+      for (let i = 1; i < labs.length; i++) if (labs[i].py - labs[i - 1].py < 14) labs[i].py = labs[i - 1].py + 14;
+      labs.forEach((l) => svg.append('text').attr('class', 'end-label').attr('x', l.px + 9).attr('y', l.py + 4).text(l.text));
+    }
+    (opt.vlines || []).forEach((v) => {
+      const xv = x(v.x), top = y(v.at);
+      svg.append('line').attr('x1', xv).attr('x2', xv).attr('y1', H - m.bottom).attr('y2', top - 4)
+        .style('stroke', css('--muted')).attr('stroke-dasharray', '3 3').attr('stroke-width', 1.2);
+      label(svg, 'note-label', xv - 6, top + 4, v.label, 'end');
+    });
+    (opt.rings || []).forEach((r) => svg.append('circle').attr('cx', x(r.x)).attr('cy', y(r.y)).attr('r', 7)
+      .attr('fill', 'none').style('stroke', css('--fg')).attr('stroke-width', 1.5));
+    (opt.notes || []).forEach((n) => label(svg, 'note-label', x(n.x) + (n.dx || 0), y(n.y) + (n.dy || 0), n.label, n.anchor));
     // Tooltip at the nearest x value.
     const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; el.appendChild(tip);
     const guide = svg.append('line').attr('y1', m.top).attr('y2', H - m.bottom).style('stroke', css('--line')).style('opacity', 0);
@@ -99,7 +162,7 @@
         const row = document.createElement('div');
         const sw = document.createElement('span');
         sw.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:${s.color}`;
-        row.append(sw, document.createTextNode(`${s.name}: ${opt.yFmtTip(p.y)}${p.ci ? ' ± ' + opt.yFmtTip(p.ci) : ''}`));
+        row.append(sw, document.createTextNode(`${s.name}: ${opt.yFmtTip(p.y)}${p.ci ? ' ± ' + opt.yFmtTip(p.ci) : ''}${p.note ? ' (' + p.note + ')' : ''}`));
         tip.appendChild(row);
       });
       tip.hidden = false;
@@ -139,33 +202,64 @@
       bind('wrong_keys', d3.sum(kr, (r) => +r.runs_with_wrong_key));
     }
     if (e3) {
-      const pts = e3.filter((r) => +r.skr_asymptotic > 0 && +r.distance_km <= 120).map((r) => [+r.distance_km, Math.log10(+r.skr_asymptotic)]);
-      const mx = d3.mean(pts, (p) => p[0]), my = d3.mean(pts, (p) => p[1]);
-      const slope = d3.sum(pts, (p) => (p[0] - mx) * (p[1] - my)) / d3.sum(pts, (p) => (p[0] - mx) ** 2);
-      bind('e3_db', d3.format('.2f')(-10 * slope));
+      const db = e3Slope(e3);
+      bind('e3_db', d3.format('.3f')(db));
+      bind('e3_decade', d3.format('.0f')(10 / db)); // km for a tenfold drop: 10 dB at db dB/km
       const none = e3.find((r) => +r.skr_asymptotic <= 0);
       bind('e3_cut', none ? fmtInt(+none.distance_km) : '—');
+      const noneE2e = e3.find((r) => +r.skr_end_to_end <= 0);
+      bind('e3_e2e_cut', noneE2e ? fmtInt(+noneE2e.distance_km) : '—');
+    }
+    if (kr) bind('kr_zero', pct0(zeroAt(kr, 'qber', 'key_fraction')));
+    if (grid) {
+      const cr = eveCrossings(grid);
+      bind('eve_cross_clean', pct0(cr[0].f)); bind('eve_cross_noisy', pct0(cr[cr.length - 1].f));
+      bind('eve_noisy_name', cr[cr.length - 1].name.replace(' noise', ''));
+    }
+    const { trace_classical: tc, trace_pq_mldsa: tp, sim_steady: ss } = DATA;
+    if (tc && tp) {
+      const a = tc.summary || {}, b = tp.summary || {};
+      bind('rp_cls_ok', pct0(a.hs_success_rate)); bind('rp_pq_ok', pct0(b.hs_success_rate));
+      bind('rp_cls_ms', d3.format('.0f')(a.hs_latency_ms_p50)); bind('rp_pq_ms', d3.format('.0f')(b.hs_latency_ms_p50));
+      bind('rp_cls_cbr', pct0(a.cbr_mean)); bind('rp_pq_cbr', pct0(b.cbr_mean));
+    }
+    if (ss) {
+      const at100 = (k) => pct0(d3.mean(ss.filter((r) => r.hs_policy === 'all' && r.handshake_profile === k && +r.n_vehicles === 100), (r) => +r.hs_success_rate));
+      bind('s100_cls', at100('classical')); bind('s100_fal', at100('pq-falcon')); bind('s100_mld', at100('pq-mldsa'));
+    }
+    if (DATA.sim_broadcast) {
+      bind('b100_fal', pct0(d3.mean(DATA.sim_broadcast.filter((r) => r.bsm_profile === 'falcon' && +r.n_vehicles === 100), (r) => +r.bsm_pdr_in_range)));
     }
   }
+  // Eve fraction at which each noise level's theory line reaches the 11% abort threshold.
+  const ABORT = 0.11;
+  const eveCrossings = (grid) => window.FigMath.eveCrossings(grid, ABORT);
 
   // ---------- Part 1 charts ----------
   function eveChart() {
     const d = DATA.qber_grid, el = $('#eve-chart');
     if (!d) return fail(el);
-    const names = [...new Set(d.map((r) => r.noise))], col = C();
-    legend($('#eve-legend'), names.map((n, i) => ({ name: `${n} (line: theory, dots: simulated)`, color: col[i] })));
-    const series = names.flatMap((n, i) => {
-      const rows = d.filter((r) => r.noise === n);
-      return [
-        { name: n + ' theory', color: col[i], line: true, points: rows.map((r) => ({ x: +r.eve_fraction, y: +r.qber_theory })) },
-        { name: n + ' simulated', color: col[i], dots: true, points: rows.map((r) => ({ x: +r.eve_fraction, y: +r.qber_measured })) },
-      ];
-    });
+    // Channel noise is an ordered quantity, so it gets ordered steps of one hue: darker = noisier.
+    const cr = eveCrossings(d), ramp = ['--q0', '--q1', '--q2', '--q3'].map(css), ink = css('--muted');
+    legend($('#eve-legend'), [
+      { name: 'dots: simulated', color: ink, kind: 'dot' }, { name: 'lines: formula', color: ink },
+      ...cr.map((c, i) => ({ name: c.name, color: ramp[i] })),
+    ]);
+    const series = cr.flatMap((c, i) => [
+      { name: c.name + ', formula', color: ramp[i], line: true, endLabel: c.name, points: c.rows.map((r) => ({ x: +r.eve_fraction, y: +r.qber_theory })) },
+      { name: c.name + ', simulated', color: ramp[i], dots: true, points: c.rows.map((r) => ({ x: +r.eve_fraction, y: +r.qber_measured })) },
+    ]);
+    const clean = cr[0], narrow = (el.clientWidth || 640) < 520;
     lineChart(el, {
-      series, xDomain: [0, 1], yDomain: [0, 0.32], xFmt: d3.format('.0%'), yFmt: d3.format('.0%'),
-      xLabel: 'Fraction of photons Eve intercepts', yLabel: 'Error rate (QBER)', refY: 0.11, refLabel: 'abort above 11%',
-      aria: 'QBER rises linearly with the fraction of photons intercepted, matching theory for 0, 2, 5 and 8 percent noise.',
-      tipTitle: (v) => `Eve intercepts ${d3.format('.0%')(v)}`, yFmtTip: d3.format('.2%'),
+      series, xDomain: [0, 1], yDomain: [0, 0.32], xFmt: pct0, yFmt: pct0,
+      xLabel: 'Share of photons Eve intercepts', yLabel: 'Error rate in Bob\'s bits (QBER)',
+      refY: ABORT, refLabel: '11% threshold',
+      zones: [{ y0: ABORT, label: 'Above 11%: Alice and Bob abort. Eve is detected.', below: 'Below 11%: the key is accepted' }],
+      rings: cr.filter((c) => c.f != null).map((c) => ({ x: c.f, y: ABORT })),
+      notes: clean.f != null ? [{ x: clean.f, y: ABORT, dx: 12, dy: 24,
+        label: narrow ? `Clean channel:\ncaught at ${pct0(clean.f)}` : `Clean channel: Eve is caught once\nshe intercepts ${pct0(clean.f)} of the photons` }] : [],
+      aria: `The error rate rises in a straight line with the share of photons Eve intercepts, matching the formula at every noise level. On a clean channel it crosses the 11% abort line at ${pct0(clean.f)}.`,
+      tipTitle: (v) => `Eve intercepts ${pct0(v)}`, yFmtTip: d3.format('.2%'),
     });
   }
   function krChart() {
@@ -173,15 +267,21 @@
     if (!d) return fail(el);
     const col = C(), pts = (f) => d.map((r) => ({ x: +r.qber, y: r[f] == null ? null : +r[f] }));
     const series = [
-      { name: 'Measured', color: col[0], line: true, dots: true, points: pts('key_fraction') },
-      { name: 'Predicted from Cascade leakage', color: col[1], line: true, dashed: true, points: pts('predicted') },
-      { name: 'Shor–Preskill bound (perfect code)', color: css('--ref'), line: true, points: pts('shor_preskill') },
+      { name: 'Measured: our full pipeline', color: col[0], line: true, dots: true, points: pts('key_fraction') },
+      { name: 'Predicted from what error correction revealed', color: col[1], line: true, dashed: true, points: pts('predicted') },
+      { name: 'Best possible: a perfect error-correcting code (Shor–Preskill)', color: css('--ref'), line: true, points: pts('shor_preskill') },
     ];
     legend($('#kr-legend'), series.map((s) => ({ name: s.name, color: s.color, dashed: s.dashed })));
+    const zMeas = zeroAt(d, 'qber', 'key_fraction'), zBest = zeroAt(d, 'qber', 'shor_preskill'), narrow = (el.clientWidth || 640) < 520;
     lineChart(el, {
-      series, xDomain: [0, 0.12], yDomain: [0, 1], xFmt: d3.format('.0%'), yFmt: d3.format('.0%'),
-      xLabel: 'Channel error rate (QBER)', yLabel: 'Secret key per sifted bit',
-      aria: 'The secret key fraction falls from 97 percent at zero error to zero near 10 percent; measured values follow the prediction, below the Shor-Preskill bound.',
+      series, xDomain: [0, 0.12], yDomain: [0, 1], xFmt: pct0, yFmt: pct0, better: 'up',
+      xLabel: 'Error rate in the kept bits (QBER)', yLabel: 'Share of kept bits that become secret key',
+      vlines: [
+        zMeas != null && { x: zMeas, at: 0.8, label: `${narrow ? 'Cascade' : 'Our error correction (Cascade)'}: no key above ${pct0(zMeas)}` },
+        zBest != null && { x: zBest, at: 0.93, label: `${narrow ? 'Perfect code' : 'A perfect code'}: no key above ${pct0(zBest)}` },
+      ].filter(Boolean),
+      rings: [zMeas != null && { x: zMeas, y: 0 }, zBest != null && { x: zBest, y: 0 }].filter(Boolean),
+      aria: `The share of bits that become secret key falls from 97 percent at zero error to zero at ${pct0(zMeas)}; measured values follow the prediction, just below the perfect-code bound, which reaches zero at ${pct0(zBest)}.`,
       tipTitle: (v) => `QBER ${d3.format('.1%')(v)}`, yFmtTip: d3.format('.1%'),
     });
   }
@@ -190,16 +290,22 @@
     if (!d) return fail(el);
     const col = C(), pts = (f) => d.map((r) => ({ x: +r.distance_km, y: r[f] != null && +r[f] > 0 ? +r[f] : null }));
     const series = [
-      { name: 'Simulated (from measured detections and errors)', color: col[0], line: true, dots: true, points: pts('skr_asymptotic') },
-      { name: 'Simulated, end-to-end final key', color: col[1], dots: true, points: pts('skr_end_to_end') },
+      { name: 'Simulated: long-run rate from the measured detections and errors', color: col[0], line: true, dots: true, points: pts('skr_asymptotic') },
+      { name: 'Simulated: final key that full runs actually produced', color: col[1], dots: true, points: pts('skr_end_to_end') },
       { name: 'Theory', color: css('--ref'), line: true, dashed: true, points: pts('skr_theory') },
     ];
-    legend($('#e3-legend'), series.map((s) => ({ name: s.name, color: s.color, dashed: s.dashed })));
+    legend($('#e3-legend'), series.map((s, i) => ({ name: s.name, color: s.color, dashed: s.dashed, kind: i === 1 ? 'dot' : undefined })));
+    // Log axis in words: 1e-3 reads "1 in 1k" (one secret bit per thousand photons sent).
+    const cut = d.find((r) => +r.skr_asymptotic <= 0), db = e3Slope(d), at = (km) => +(d.find((r) => +r.distance_km === km) || {}).skr_theory;
+    const narrow = (el.clientWidth || 640) < 520, noteKm = narrow ? 20 : 60;
     lineChart(el, {
       series, xDomain: [0, 200], yDomain: [1e-7, 0.2], yLog: true, yTicks: [1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1],
-      xFmt: (v) => v + ' km', yFmt: pow10, xLabel: 'Link distance', yLabel: 'Secret key bits per pulse (log)',
-      aria: 'On a log scale the key rate falls in a straight line with distance and stops shortly before 190 km.',
-      tipTitle: (v) => `${v} km`, yFmtTip: d3.format('.2e'),
+      xFmt: (v) => v + ' km', yFmt: inWords, xLabel: 'Length of the fibre link', yLabel: 'Secret bits per photon sent (log scale)',
+      left: 74, better: 'up',
+      vlines: cut ? [{ x: +cut.distance_km, at: 0.02, label: `No key at${narrow ? '\n' : ' '}${fmtInt(+cut.distance_km)} km and beyond` }] : [],
+      notes: at(noteKm) > 0 ? [{ x: noteKm, y: at(noteKm), dy: -26, label: `10× less key every ${d3.format('.0f')(10 / db)} km` }] : [],
+      aria: `On a log scale the key rate falls in a straight line, ten times lower every ${d3.format('.0f')(10 / db)} km, and there is no key from ${cut ? cut.distance_km : '?'} km.`,
+      tipTitle: (v) => `${v} km`, yFmtTip: (v) => `1 secret bit per ${fmtInt(Math.round(1 / v))} photons`,
     });
   }
 
@@ -257,46 +363,66 @@
     const rows = DATA.bsm_sizes, el = $('#bsm-chart');
     if (!rows) return fail(el);
     el.replaceChildren();
-    const col = C();
+    // Colour = the vehicle's signature algorithm, the same colours as the network charts below.
+    // Solid bar = the usual message (certificate digest); pale bar = the message with the full certificate.
+    const col = C(), ink = css('--muted');
+    const ALG = { 'ECDSA-P256': col[0], 'Falcon-512': col[1], 'ML-DSA-44': col[2] };
     const series = [
-      { key: 'msg_with_digest_bytes', name: 'With certificate digest (9 of every 10 messages)', color: col[0] },
-      { key: 'msg_with_cert_bytes', name: 'With full certificate (once a second)', color: col[1] },
+      { key: 'msg_with_digest_bytes', name: 'with the 8-byte certificate digest (9 of every 10 messages)', pale: false },
+      { key: 'msg_with_cert_bytes', name: 'with the full certificate (1 of every 10)', pale: true },
     ];
-    legend($('#bsm-legend'), [...series, { name: '1,400-byte radio frame', color: css('--ref'), dashed: true }]);
-    const W = el.clientWidth || 640, barH = 13, gap = 3, labelH = 20, groupGap = 14;
-    const groupH = labelH + series.length * barH + gap + groupGap, m = { top: 4, right: 60, bottom: 30, left: 4 };
+    legend($('#bsm-legend'), [
+      { name: 'Solid: usual message, 8-byte certificate digest (9 of every 10)', color: ink, kind: 'box' },
+      { name: 'Pale: message with the full certificate (1 of every 10)', color: ink, kind: 'pale' },
+      { name: 'One radio frame: 1,400 bytes', color: css('--ref'), dashed: true },
+    ]);
+    const W = el.clientWidth || 640, narrow = W < 520, barH = 14, gap = 4, labelH = 20, groupGap = 16;
+    const groupH = labelH + series.length * barH + gap + groupGap, m = { top: 22, right: narrow ? 100 : 150, bottom: 30, left: 4 };
     const H = m.top + rows.length * groupH + m.bottom, limit = +rows[0].frame_limit || 1400;
     const x = d3.scaleLinear().domain([0, d3.max(rows, (r) => d3.max(series, (s) => +r[s.key]))]).nice().range([m.left, W - m.right]);
     const svg = d3.select(el).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H).attr('role', 'img')
       .attr('aria-label', 'Safety-message size by signature scheme against the 1,400-byte frame: ECDSA fits, Falcon-512 fits with a digest, ML-DSA-44 overflows.');
     svg.append('g').attr('transform', `translate(0,${H - m.bottom})`)
-      .call(d3.axisBottom(x).ticks(W < 520 ? 4 : 7).tickFormat((v) => fmtInt(v) + ' B').tickSize(-(H - m.top - m.bottom)))
+      .call(d3.axisBottom(x).ticks(narrow ? 4 : 7).tickFormat((v) => fmtInt(v) + ' B').tickSize(-(H - m.top - m.bottom)))
       .call((g) => g.select('.domain').remove());
+    // Frame limit first, so the row labels (with a halo) sit on top of it.
+    svg.append('line').attr('x1', x(limit)).attr('x2', x(limit)).attr('y1', m.top - 4).attr('y2', H - m.bottom)
+      .style('stroke', css('--ref')).attr('stroke-dasharray', '4 4').attr('stroke-width', 1.5);
+    svg.append('text').attr('class', 'note-label').attr('x', x(limit) + 6).attr('y', m.top - 8).text('1 radio frame = 1,400 B');
     rows.forEach((r, gi) => {
-      const y0 = m.top + gi * groupH;
+      const y0 = m.top + gi * groupH, c = ALG[r.vehicle_alg] || ink;
       svg.append('text').attr('class', 'direct').attr('x', m.left).attr('y', y0 + 13).text(r.config);
       series.forEach((s, si) => {
-        const v = +r[s.key], y = y0 + labelH + si * (barH + gap);
-        svg.append('rect').attr('x', x(0)).attr('y', y).attr('width', Math.max(1, x(v) - x(0))).attr('height', barH).attr('rx', 3).style('fill', s.color)
-          .append('title').text(`${s.name}: ${fmtInt(v)} bytes (${v <= limit ? 'fits one frame' : Math.ceil(v / limit) + ' frames'})`);
-        svg.append('text').attr('class', 'axis-label').attr('x', x(v) + 5).attr('y', y + barH - 2).text(fmtInt(v));
+        const v = +r[s.key], y = y0 + labelH + si * (barH + gap), frames = Math.ceil(v / limit);
+        const verdict = v <= limit ? '✓ fits one frame' : `✗ needs ${frames} frames`;
+        const bar = svg.append('rect').attr('x', x(0)).attr('y', y).attr('width', Math.max(1, x(v) - x(0))).attr('height', barH).attr('rx', 3).style('fill', c);
+        if (s.pale) bar.style('fill-opacity', 0.32).style('stroke', c).attr('stroke-width', 1.5);
+        bar.append('title').text(`${r.config}, message ${s.name}: ${fmtInt(v)} bytes (${verdict.slice(2)})`);
+        svg.append('text').attr('class', 'axis-label bar-label').attr('x', x(v) + 6).attr('y', y + barH - 3)
+          .text(narrow ? `${fmtInt(v)} ${v <= limit ? '✓' : '✗'}` : `${fmtInt(v)} B  ${verdict}`);
       });
     });
-    svg.append('line').attr('x1', x(limit)).attr('x2', x(limit)).attr('y1', m.top).attr('y2', H - m.bottom)
-      .style('stroke', css('--ref')).attr('stroke-dasharray', '4 4').attr('stroke-width', 1.5);
   }
 
   // ---------- network charts with pickers ----------
-  const PROFILES = [['classical', 'Classical (X25519 + ECDSA)'], ['pq-falcon', 'Post-quantum, Falcon-512'], ['pq-mldsa', 'Post-quantum, ML-DSA-44']];
-  const SIGS = [['ecdsa', 'ECDSA P-256 (today)'], ['falcon', 'Falcon-512'], ['mldsa', 'ML-DSA-44']];
+  // [key, legend name, short end-of-line label]. Colours follow the algorithm: ECDSA / classical blue,
+  // Falcon-512 orange, ML-DSA-44 green, here and in the message-size bars above.
+  const PROFILES = [['classical', 'Classical (X25519 + ECDSA)', 'Classical'], ['pq-falcon', 'Post-quantum, Falcon-512', 'PQ, Falcon'], ['pq-mldsa', 'Post-quantum, ML-DSA-44', 'PQ, ML-DSA']];
+  const SIGS = [['ecdsa', 'ECDSA P-256 (today)', 'ECDSA'], ['falcon', 'Falcon-512', 'Falcon-512'], ['mldsa', 'ML-DSA-44', 'ML-DSA-44']];
+  const CHANNEL = { key: 'cbr_mean', short: 'Channel load', label: 'Share of time the channel is busy', fmt: '.0%', domain: [0, 1], better: 'down',
+    note: 'Share of time the radio channel is busy (channel busy ratio). Lower is better: near 100% the channel is saturated, so messages wait, collide and are lost.' };
   const SCALE_METRICS = [
-    { key: 'hs_latency_ms_p50', short: 'Latency', label: 'Median handshake latency (ms)', fmt: ',.0f', ref: 100, refLabel: '100 ms budget' },
-    { key: 'hs_success_rate', short: 'Success rate', label: 'Handshakes that succeed', fmt: '.0%', domain: [0, 1] },
-    { key: 'cbr_mean', short: 'Channel load', label: 'Share of time the channel is busy', fmt: '.0%', domain: [0, 1] },
+    { key: 'hs_latency_ms_p50', short: 'Latency', label: 'Median handshake latency (ms)', fmt: ',.0f', ref: 100, refLabel: '100 ms', better: 'down',
+      zone: { y0: 100, label: 'Over the 100 ms budget' },
+      note: 'Median time from the first handshake message to a shared key, over the handshakes that finished. Lower is better; V2V safety applications budget about 100 ms. Hollow dots and dashed lines: most handshakes failed, so the median comes from the few that finished (see Success rate).' },
+    { key: 'hs_success_rate', short: 'Success rate', label: 'Handshakes that succeed', fmt: '.0%', domain: [0, 1], better: 'up',
+      note: 'Share of started handshakes that end with both cars holding the same session key. Higher is better.' },
+    CHANNEL,
   ];
   const BSM_METRICS = [
-    { key: 'bsm_pdr_in_range', short: 'Delivered', label: 'Safety messages delivered and verified (≤ 300 m)', fmt: '.0%', domain: [0, 1] },
-    { key: 'cbr_mean', short: 'Channel load', label: 'Share of time the channel is busy', fmt: '.0%', domain: [0, 1] },
+    { key: 'bsm_pdr_in_range', short: 'Delivered', label: 'Safety messages delivered and verified (≤ 300 m)', fmt: '.0%', domain: [0, 1], better: 'up',
+      note: 'Share of safety messages that cars within 300 m receive and verify. Higher is better: each missed message is a position and speed update from a nearby car that never arrived.' },
+    CHANNEL,
   ];
   const state = { scaleMetric: SCALE_METRICS[0].key, policy: 'all', bsmMetric: BSM_METRICS[0].key };
   // Segmented toggle for 2-4 options: one click, the choice always visible. Exposes .value.
@@ -335,21 +461,37 @@
   }
   function netChart(holder, rows, key, defs, metric, aria) {
     const col = C(), xs = [...new Set(rows.map((r) => +r.n_vehicles))].sort((a, b) => a - b);
-    const series = defs.map(([k, name], i) => {
+    // A latency median is only meaningful if most handshakes finished: otherwise mark the point hollow.
+    const latency = metric.key === 'hs_latency_ms_p50';
+    const series = defs.map(([k, name, short], i) => {
       const pts = xs.map((x) => {
-        const [mu, ci] = meanCi(rows.filter((r) => r[key] === k && +r.n_vehicles === x).map((r) => r[metric.key]));
-        return { x, y: mu, ci };
+        const sel = rows.filter((r) => r[key] === k && +r.n_vehicles === x);
+        const [mu, ci] = meanCi(sel.map((r) => r[metric.key]));
+        const p = { x, y: mu, ci };
+        if (latency && mu != null) {
+          const ok = d3.mean(sel, (r) => +r.hs_success_rate);
+          if (ok < 0.5) { p.weak = true; p.note = `only ${pct0(ok)} of handshakes finished`; }
+        }
+        return p;
       });
-      return { name, color: col[i], line: true, dots: true, points: pts,
-        band: pts.map((p) => ({ x: p.x, lo: p.y != null && p.ci != null ? p.y - p.ci : null, hi: p.y != null && p.ci != null ? p.y + p.ci : null })) };
+      return { name, color: col[i], line: true, dots: true, points: pts, endLabel: short, hollow: latency ? (p) => p.weak : null,
+        // No band where the median is not meaningful (hollow points): it would only add clutter.
+        band: pts.map((p) => { const b = p.y != null && p.ci != null && !p.weak; return { x: p.x, lo: b ? p.y - p.ci : null, hi: b ? p.y + p.ci : null }; }) };
     });
     const ys = series.flatMap((s) => s.points.map((p) => p.y)).filter((y) => y != null);
     lineChart(holder, {
       series, xDomain: [0, d3.max(xs)], yDomain: metric.domain || [0, Math.min(Math.max(metric.ref || 0, ...ys) * 1.15, 500)],
       xFmt: d3.format(',.0f'), yFmt: d3.format(metric.fmt), xLabel: 'Vehicles on the 2 km, 6-lane highway', yLabel: metric.label,
-      refY: metric.ref ?? null, refLabel: metric.refLabel, aria: aria + ' Showing: ' + metric.label + '.',
+      refY: metric.ref ?? null, refLabel: metric.refLabel, better: metric.better, zones: metric.zone ? [metric.zone] : [], endWidth: 84,
+      aria: aria + ' Showing: ' + metric.label + '.',
       tipTitle: (x) => `${x} vehicles (mean ± 95% CI over seeds)`, yFmtTip: d3.format(metric.fmt),
     });
+  }
+  // The explanation under a chart's buttons, which follows the chosen measure.
+  function metricNote(el, metric) {
+    let p = el.querySelector('.metric-note');
+    if (!p) { p = document.createElement('p'); p.className = 'metric-note'; p.setAttribute('aria-live', 'polite'); el.querySelector('.controls').after(p); }
+    p.textContent = metric.note;
   }
   function scaleChart() {
     const el = $('#scale-chart'), d = DATA.sim_steady;
@@ -365,6 +507,7 @@
       legend($('#scale-legend'), PROFILES.map(([, n], i) => ({ name: n, color: C()[i] })));
     }
     const metric = SCALE_METRICS.find((m) => m.key === state.scaleMetric);
+    metricNote(el, metric);
     netChart(el.querySelector('.chart'), d.filter((r) => r.hs_policy === state.policy), 'handshake_profile', PROFILES, metric,
       'Handshake performance against the number of vehicles for classical, Falcon and ML-DSA handshakes.');
   }
@@ -378,7 +521,9 @@
       el.append(bar, holder); el.dataset.ready = '1';
       legend($('#bsmnet-legend'), SIGS.map(([, n], i) => ({ name: n, color: C()[i] })));
     }
-    netChart(el.querySelector('.chart'), d, 'bsm_profile', SIGS, BSM_METRICS.find((m) => m.key === state.bsmMetric),
+    const metric = BSM_METRICS.find((m) => m.key === state.bsmMetric);
+    metricNote(el, metric);
+    netChart(el.querySelector('.chart'), d, 'bsm_profile', SIGS, metric,
       'Safety-message delivery and channel load against the number of vehicles for ECDSA, Falcon-512 and ML-DSA-44.');
   }
 
@@ -403,7 +548,20 @@
     };
     const P = { mldsa: prep(TR.mldsa), classical: prep(TR.classical) };
     const SHORT = { mldsa: 'Post-quantum (ML-DSA)', classical: 'Classical (ECDSA)' };
-    const sel = segmented('Which run', Object.keys(LABEL).map((k) => [k, SHORT[k]]), st.key, (v) => { st.key = v; st.t = START; });
+    // Whole-run results of both recordings, side by side; the one playing is highlighted.
+    const runs = document.createElement('div'); runs.className = 'runs';
+    ['classical', 'mldsa'].forEach((k) => {
+      const s = TR[k].summary || {}, card = document.createElement('div'); card.className = 'run'; card.dataset.k = k;
+      const name = document.createElement('div'); name.className = 'name'; name.textContent = LABEL[k] + ', whole run';
+      const nums = document.createElement('div'); nums.className = 'nums';
+      [[pct0(s.hs_success_rate || 0), 'handshakes succeed'], [d3.format('.0f')(s.hs_latency_ms_p50 || 0) + ' ms', 'median handshake'],
+        [pct0(s.cbr_mean || 0), 'channel busy']].forEach(([v, l]) => {
+        const c = document.createElement('div'); const b = document.createElement('b'); b.textContent = v; c.append(b, document.createTextNode(l)); nums.appendChild(c);
+      });
+      card.append(name, nums); runs.appendChild(card);
+    });
+    const mark = () => runs.querySelectorAll('.run').forEach((c) => c.classList.toggle('on', c.dataset.k === st.key));
+    const sel = segmented('Which run', Object.keys(LABEL).map((k) => [k, SHORT[k]]), st.key, (v) => { st.key = v; st.t = START; mark(); });
     const play = document.createElement('button'); play.type = 'button'; play.className = 'icon-btn';
     const setPlay = () => {
       play.innerHTML = st.playing
@@ -420,7 +578,7 @@
     const canvas = document.createElement('canvas'); canvas.className = 'road'; canvas.setAttribute('role', 'img');
     canvas.setAttribute('aria-label', 'Animated replay of 60 vehicles on a 2 km highway with handshakes drawn as lines between vehicles.');
     const stats = document.createElement('div'); stats.className = 'replay-stats';
-    el.append(bar, canvas, stats);
+    el.append(runs, bar, canvas, stats); mark();
     if ('IntersectionObserver' in window) new IntersectionObserver((es) => { st.visible = es[0].isIntersecting; }).observe(el);
 
     function render() {
@@ -431,7 +589,7 @@
         canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); canvas.style.height = H + 'px';
       }
       const g = canvas.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
-      const L = tr.road_length, sx = W / L, muted = css('--muted'), col = C();
+      const L = tr.road_length, sx = W / L, muted = css('--muted');
       const okC = css('--ok'), badC = css('--bad'), warnC = css('--warn');
       g.fillStyle = css('--line'); g.globalAlpha = 0.55; g.fillRect(0, top, W, 2 * lanes * laneH + median); g.globalAlpha = 1;
       g.strokeStyle = muted; g.setLineDash([6, 8]); g.lineWidth = 1;
@@ -463,12 +621,14 @@
         g.strokeStyle = color; g.globalAlpha = alpha; g.lineWidth = 2.2; g.beginPath(); g.moveTo(xa, ya); g.lineTo(xb, yb); g.stroke();
       });
       g.globalAlpha = 1;
-      tr.vehicles.forEach((v, i) => { const [x, y] = pos[i]; g.fillStyle = v.dir > 0 ? col[0] : col[1]; g.fillRect(x - 4, y - 3, 8, 6); });
+      // Cars are neutral: colour on this canvas means only handshake state (amber / green / red).
+      g.fillStyle = css('--fg'); g.globalAlpha = 0.78;
+      tr.vehicles.forEach((v, i) => { const [x, y] = pos[i]; g.fillRect(x - 4, y - 3, 8, 6); });
+      g.globalAlpha = 1;
       g.fillStyle = muted; g.font = '12px ' + css('--sans');
       g.fillText('→ eastbound', 4, 14); g.textAlign = 'right'; g.fillText('westbound ←', W - 4, H - 6); g.textAlign = 'left';
       const scale = 500 * sx; g.strokeStyle = muted; g.beginPath(); g.moveTo(4, H - 10); g.lineTo(4 + scale, H - 10); g.stroke(); g.fillText('500 m', 8 + scale, H - 6);
-      const s = tr.summary || {};
-      stats.textContent = `t = ${t.toFixed(2)} s · handshakes so far: ${ok} done, ${bad} failed, ${active} running · whole run: ${Math.round((s.hs_success_rate || 0) * 100)}% succeed, median ${d3.format('.0f')(s.hs_latency_ms_p50 || 0)} ms, channel ${Math.round((s.cbr_mean || 0) * 100)}% busy`;
+      stats.textContent = `${SHORT[st.key]} · t = ${t.toFixed(2)} s of ${p.duration.toFixed(0)} s · handshakes so far: ${ok} done, ${bad} failed, ${active} running`;
       slider.value = String(Math.round((t / p.duration) * 1000));
       slider.style.setProperty('--fill', (100 * t) / p.duration + '%');
     }

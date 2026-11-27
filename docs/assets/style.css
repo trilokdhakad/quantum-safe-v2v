@@ -10,6 +10,11 @@
   --c1: #e3741c;
   --c2: #1f9e6e;
   --c3: #b0399d;
+  /* Ordered steps of one blue ramp, for ordered quantities (channel noise): darker = more. */
+  --q0: #84b9f3;
+  --q1: #338ced;
+  --q2: #1b64be;
+  --q3: #0e3d7e;
   --ref: #8a8d95;
   --ok: #17845a;
   --bad: #c8382e;
@@ -29,10 +34,15 @@
     --muted: #a3a6ad;
     --line: #2d3036;
     --grid: #26292e;
-    --c0: #5b9cf0;
-    --c1: #f0904a;
-    --c2: #3cc08f;
+    /* Validated for the dark panel (dataviz validate_palette.js, all pairs). */
+    --c0: #4f95ec;
+    --c1: #e76624;
+    --c2: #2fb383;
     --c3: #d466c2;
+    --q0: #1b64be;
+    --q1: #338ced;
+    --q2: #6aabf1;
+    --q3: #b6d5f8;
     --ref: #8d9099;
     --ok: #3cc08f;
     --bad: #f06a5f;
@@ -261,3 +271,28 @@ button.go.busy { background: linear-gradient(90deg, var(--accent), color-mix(in 
 .lab-nums div { animation: fadeUp .35s var(--ease) both; }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ===== Figures: what you see / how we got it / why it matters ===== */
+.tag { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); margin-right: 8px; white-space: nowrap; }
+.fig-read { font-size: 14px; color: var(--fg); margin: 0 0 12px; max-width: 86ch; line-height: 1.5; }
+.fig-how { font-size: 13px; color: var(--muted); margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); max-width: 100%; line-height: 1.5; }
+.takeaway .tag { display: block; margin-bottom: 2px; }
+.table-read { font-size: 13.5px; color: var(--muted); margin: 0 0 12px; max-width: 86ch; line-height: 1.5; }
+.table-read b { color: var(--fg); font-weight: 600; }
+.metric-note { font-size: 13.5px; color: var(--muted); margin: 0 0 6px; max-width: 86ch; min-height: 2.9em; line-height: 1.45; }
+.chart .zone-label { font-size: 12px; font-weight: 600; fill: var(--bad); }
+.chart .zone-label.quiet { fill: var(--muted); font-weight: 500; }
+.chart .note-label { font-size: 12px; font-weight: 600; fill: var(--fg); }
+.chart .end-label { font-size: 12px; fill: var(--fg); }
+.chart .hint { font-size: 11.5px; fill: var(--muted); }
+.legend i.ring { width: 9px; height: 9px; border-radius: 50%; background: transparent !important; border: 2px solid var(--muted); }
+.legend i.dot { width: 8px; height: 8px; border-radius: 50%; }
+.legend i.box { width: 14px; height: 10px; border-radius: 2px; }
+/* Replay: the two recorded runs side by side */
+.runs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin: 0 0 12px; }
+.run { border: 1px solid var(--line); border-radius: 10px; padding: 9px 13px; font-size: 13px; color: var(--muted); transition: border-color .2s, background-color .2s; }
+.run.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.run .name { color: var(--fg); font-weight: 600; font-size: 13.5px; margin-bottom: 4px; }
+.run .nums { display: flex; gap: 16px; flex-wrap: wrap; }
+.run .nums b { display: block; color: var(--fg); font-size: 19px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.chart .direct, .chart .bar-label, .chart .note-label, .chart .zone-label, .chart .end-label, .chart .hint { paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }

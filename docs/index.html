@@ -59,19 +59,28 @@
   <div class="card" id="lab"></div>
 
   <h3>An eavesdropper cannot hide</h3>
-  <p class="note">200,000 photons per point. Dots are simulated, lines are the exact formula Q = e + f/4 − f·e/2 (e = channel noise, f = fraction intercepted). Largest deviation from theory: <b data-bind="max_z">–</b> standard errors over <span data-bind="qber_points">–</span> settings.</p>
-  <div class="card"><div class="legend" id="eve-legend"></div><div class="chart" id="eve-chart"></div></div>
-  <p class="takeaway">Above the 11% line Alice and Bob abort. A clean channel detects Eve once she touches about <b>44%</b> of the photons, and full interception produces a 25% error rate. Channel noise uses up part of that margin.</p>
+  <div class="card">
+    <p class="fig-read"><span class="tag">What you see</span>How often Bob's bits disagree with Alice's (the error rate, QBER) as Eve intercepts a larger share of the photons. One line per level of ordinary channel noise, labelled at its right end. In the red zone, above 11%, Alice and Bob throw the key away.</p>
+    <div class="legend" id="eve-legend"></div><div class="chart" id="eve-chart"></div>
+    <p class="fig-how"><span class="tag">How we got it</span>Each dot is a simulation of 200,000 photons. Each line is the formula Q = e + f/4 − f·e/2 (e = channel noise, f = share intercepted), derived step by step in <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/01_qkd.md#13-qber-with-channel-noise-and-an-eavesdropper">report §1.3</a>. Largest gap between a dot and its line: <b data-bind="max_z">–</b> standard errors, over <span data-bind="qber_points">–</span> settings.</p>
+  </div>
+  <p class="takeaway"><span class="tag">Why it matters</span>Eve has to guess each photon's basis. Half her guesses are wrong, and then Bob's bit is a coin flip, so every photon she touches adds a 1-in-4 chance of an error. On a clean channel she is caught once she intercepts <b data-bind="eve_cross_clean">–</b> of the photons, and intercepting all of them gives a 25% error rate. Channel noise uses up part of that margin: at <span data-bind="eve_noisy_name">–</span> noise she is caught from <b data-bind="eve_cross_noisy">–</b>. Below the line, privacy amplification shortens the key to remove what she could have learned.</p>
 
   <h3>From raw bits to a secret key</h3>
-  <p class="note">Full pipeline: sifting, error estimation, Cascade error correction <a class="cite" href="#ref13">[13]</a>, verification and Toeplitz privacy amplification <a class="cite" href="#ref14">[14]</a>. 100,000 photons, 10 runs per point.</p>
-  <div class="card"><div class="legend" id="kr-legend"></div><div class="chart" id="kr-chart"></div></div>
-  <p class="takeaway">Measured key rates follow the prediction. Real error correction reveals about <b data-bind="cascade_f">–</b>× the theoretical minimum, so the key runs out near <b>10%</b> error rather than the 11% of the Shor–Preskill bound <a class="cite" href="#ref15">[15]</a>. Across <span data-bind="qkd_runs">–</span> runs, Alice and Bob never ended up with different keys (<span data-bind="wrong_keys">–</span> mismatches).</p>
+  <div class="card">
+    <p class="fig-read"><span class="tag">What you see</span>How much of the kept bits (those where Alice's and Bob's bases matched) ends up as secret key, as the error rate rises. Fixing the errors means talking over a public channel that Eve can hear, and everything said there is deducted from the key. Blue: what our pipeline actually produced. Dashed: our prediction. Grey: the most that any error-correcting code could keep.</p>
+    <div class="legend" id="kr-legend"></div><div class="chart" id="kr-chart"></div>
+    <p class="fig-how"><span class="tag">How we got it</span>Full pipeline: sifting, error estimation, Cascade error correction <a class="cite" href="#ref13">[13]</a>, verification and Toeplitz privacy amplification <a class="cite" href="#ref14">[14]</a>. 100,000 photons, 10 runs per point. Derivation in <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/01_qkd.md#15-error-correction-what-cascade-must-reveal">report §1.5–1.6</a>.</p>
+  </div>
+  <p class="takeaway"><span class="tag">Why it matters</span>Measured key rates follow the prediction. Real error correction reveals about <b data-bind="cascade_f">–</b>× the theoretical minimum, so the key runs out at <b data-bind="kr_zero">–</b> error rather than at the 11% of the Shor–Preskill bound <a class="cite" href="#ref15">[15]</a>. That bound is why the abort threshold in the chart above sits at 11%. Across <span data-bind="qkd_runs">–</span> runs, Alice and Bob never ended up with different keys (<span data-bind="wrong_keys">–</span> mismatches).</p>
 
   <h3>Distance is the real limit</h3>
-  <p class="note">Fibre-like loss of 0.2 dB/km, 20% efficient detectors, an ideal single-photon source (an optimistic setting). 5 runs per distance.</p>
-  <div class="card"><div class="legend" id="e3-legend"></div><div class="chart" id="e3-chart"></div></div>
-  <p class="takeaway">The key rate falls <b data-bind="e3_db">–</b> dB per km, exactly the channel loss, until detector noise overwhelms the signal: no key at <b data-bind="e3_cut">–</b> km. QKD also needs line-of-sight optics between moving cars and an authenticated classical channel, which in practice means pre-shared keys or post-quantum signatures.</p>
+  <div class="card">
+    <p class="fig-read"><span class="tag">What you see</span>Secret key per photon sent, against the length of the link. The vertical scale is logarithmic: each gridline down means ten times less key, so a straight line here is an exponential fall. Blue: the long-run rate from what the detectors measured. Orange dots: the key that full runs actually produced. Dashed: theory.</p>
+    <div class="legend" id="e3-legend"></div><div class="chart" id="e3-chart"></div>
+    <p class="fig-how"><span class="tag">How we got it</span>Fibre-like loss of 0.2 dB/km, 20% efficient detectors, a dark-count probability of 10⁻⁵ per pulse and an ideal single-photon source (an optimistic setting); 5 runs per distance. Full runs stop producing key earlier, from <span data-bind="e3_e2e_cut">–</span> km, because each run also pays a fixed 131-bit verification and security cost that the long-run rate leaves out. Derivation in <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/01_qkd.md#17-loss-dark-counts-and-distance">report §1.7</a>.</p>
+  </div>
+  <p class="takeaway"><span class="tag">Why it matters</span>The key rate falls <b data-bind="e3_db">–</b> dB per km, matching the fibre loss of 0.2 dB/km: ten times less key every <b data-bind="e3_decade">–</b> km. Then detector noise overwhelms the weak signal, and there is no key at <b data-bind="e3_cut">–</b> km. QKD also needs line-of-sight optics between moving cars and an authenticated classical channel, which in practice means pre-shared keys or post-quantum signatures.</p>
 </div></section>
 
 <section id="attacks"><div class="wrap">
@@ -79,6 +88,7 @@
   <h2>Three published schemes, seven successful attacks</h2>
   <p class="intro">The schemes are PSRS-D2D <a class="cite" href="#ref1">[1]</a> (drone-to-drone, <i>IEEE TMC</i> 2026), PSLAP <a class="cite" href="#ref2">[2]</a> (autonomous vehicle–drone, <i>Computer Networks</i> 2025) and P²AS-IoAV <a class="cite" href="#ref3">[3]</a> (vehicle–UAV and UAV–cloud with CRYSTALS-Kyber, <i>IEEE TVT</i> 2026). Each was implemented from the paper's own equations and figures on real P-256 and ML-KEM cryptography. Every attacker gets only what the paper's threat model allows; the victim's true secret is used only to check the result. All <span data-bind="paper_attacks">–</span> attacks on the three schemes recover it exactly. The last row is a separate demonstration of Shor's algorithm <a class="cite" href="#ref5">[5]</a> against the elliptic-curve/RSA family, not an attack on any of the three papers.</p>
   <div class="card tablewrap">
+    <p class="table-read"><b>How to read:</b> each row is one attack, run on our implementation of the scheme. A red "Succeeds (3/3 checks match)" means every secret value the attacker computed equals the victim's real one; hover over a result to see both.</p>
     <table><thead><tr><th>Scheme</th><th>Attack</th><th>What the attacker has</th><th>Paper's claim it refutes</th><th>Result</th></tr></thead>
     <tbody id="attack-rows"></tbody></table>
   </div>
@@ -128,9 +138,12 @@
   <p class="takeaway">Compute is not the problem: a few milliseconds. The cost is <b>size</b>. Post-quantum keys, signatures and certificates make a handshake about 15 KB, against under 1 KB for the classical version of the same protocol.</p>
 
   <h3>Does a signed safety message still fit in one radio frame?</h3>
-  <p class="note">Real signatures over a 200-byte payload. The full certificate goes out once a second; the other nine messages carry an 8-byte digest of it.</p>
-  <div class="card"><div class="legend" id="bsm-legend"></div><div class="chart" id="bsm-chart"></div></div>
-  <p class="takeaway">ML-DSA-44 overflows a 1,400-byte frame even with the digest. Falcon-512 with the digest fits, so Falcon is the signature for broadcasts.</p>
+  <div class="card">
+    <p class="fig-read"><span class="tag">What you see</span>The size of one signed safety message for each choice of signature, against one 1,400-byte radio frame (dashed line). The "authority" is the certificate issuer: its signature sits inside every vehicle certificate. Colour is the vehicle's signature, as in the network charts below.</p>
+    <div class="legend" id="bsm-legend"></div><div class="chart" id="bsm-chart"></div>
+    <p class="fig-how"><span class="tag">How we got it</span>Real signatures over a 200-byte payload, encoded as in our implementation. The full certificate goes out once a second; the other nine messages carry an 8-byte digest of it. Size formulas in <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/04_network.md#42-message-sizes-from-the-wire-format">report §4.2</a>.</p>
+  </div>
+  <p class="takeaway"><span class="tag">Why it matters</span>ML-DSA-44 overflows a 1,400-byte frame even with the digest. Falcon-512 with the digest fits, so Falcon is the signature for broadcasts. The once-a-second message with the full certificate overflows with every post-quantum choice; the simulation splits it into fragments, which real 802.11p cannot do (see Limits at the bottom of the page).</p>
 </div></section>
 
 <section id="network"><div class="wrap">
@@ -140,20 +153,28 @@
 
   <h3>Watch it: the same traffic, classical vs post-quantum</h3>
   <div class="card">
+    <p class="fig-read"><span class="tag">What you see</span>A 2 km stretch of six-lane highway from above, recorded from the simulation. Each small box is a car (top half driving east, bottom half west). An amber line joins two cars while their handshake runs; it flashes green when they share a key and red when the handshake fails. Faint rings are safety-message broadcasts (an amber ring carries the full certificate). Switch between the two runs and watch how long the amber lines last.</p>
     <div id="replay"></div>
-    <div class="keyrow"><span><i style="background:var(--c0)"></i>eastbound car</span><span><i style="background:var(--c1)"></i>westbound car</span><span><i style="background:var(--warn)"></i>handshake running / safety message with certificate</span><span><i style="background:var(--ok)"></i>handshake done</span><span><i style="background:var(--bad)"></i>handshake failed</span></div>
+    <div class="keyrow"><span><i style="background:var(--fg);opacity:.78;width:8px;height:6px;border-radius:1px"></i>car</span><span><i style="background:var(--warn)"></i>handshake running / safety message with certificate</span><span><i style="background:var(--ok)"></i>handshake done</span><span><i style="background:var(--bad)"></i>handshake failed</span></div>
+    <p class="fig-how"><span class="tag">How we got it</span>60 vehicles, 6 seconds of steady-state traffic (recorded after a 6-second warm-up), replayed in your browser. Both runs use identical traffic and Falcon-512 safety messages; only the handshake differs.</p>
   </div>
-  <p class="note">60 vehicles, 6 seconds of steady-state traffic (recorded after a 6-second warm-up) replayed in your browser. Both runs use identical traffic and Falcon-512 safety messages; only the handshake differs. With ML-DSA certificates each handshake puts about 15 KB on a shared channel, so handshakes take longer and more of them fail.</p>
+  <p class="takeaway"><span class="tag">Why it matters</span>Each ML-DSA handshake puts about 15 KB on the shared channel, against under 1 KB for the classical one. With identical traffic, the channel is busy <b data-bind="rp_pq_cbr">–</b> of the time instead of <span data-bind="rp_cls_cbr">–</span>, the median handshake takes <b data-bind="rp_pq_ms">–</b> ms instead of <span data-bind="rp_cls_ms">–</span> ms, and <b data-bind="rp_pq_ok">–</b> of handshakes succeed instead of <span data-bind="rp_cls_ok">–</span>.</p>
 
   <h3>Handshakes as the road fills up</h3>
-  <p class="note">Steady state (12-second runs, first 6 s discarded), mean of 5 seeds per point. "Same direction only" means sessions only with vehicles travelling the same way, as platooning would need.</p>
-  <div class="card"><div class="legend" id="scale-legend"></div><div id="scale-chart"></div></div>
-  <p class="takeaway">The median handshake stays under the 100 ms budget up to about <b>100</b> vehicles for classical crypto and about <b>50</b> for both post-quantum variants (ML-DSA is right at the limit there, 95 ± 33 ms). Restricting sessions to the same direction roughly doubles that.</p>
+  <div class="card">
+    <p class="fig-read"><span class="tag">What you see</span>One line per kind of handshake as more cars share the 2 km road; shaded bands are 95% confidence ranges. The buttons choose what is measured (explained under them) and which neighbours each car runs handshakes with.</p>
+    <div class="legend" id="scale-legend"></div><div id="scale-chart"></div>
+    <p class="fig-how"><span class="tag">How we got it</span>Steady state (12-second runs, first 6 s discarded), mean of 5 random seeds per point. "Same direction only" means sessions only with vehicles travelling the same way, as platooning would need.</p>
+  </div>
+  <p class="takeaway"><span class="tag">Why it matters</span>The median handshake stays under the 100 ms budget up to about <b>100</b> vehicles for classical crypto and about <b>50</b> for both post-quantum variants (ML-DSA is right at the limit there, 95 ± 33 ms). Beyond that, post-quantum handshakes mostly fail: at 100 vehicles only <b data-bind="s100_fal">–</b> (Falcon) and <b data-bind="s100_mld">–</b> (ML-DSA) succeed, against <span data-bind="s100_cls">–</span> for classical. Handshaking only with cars going the same way raises the limit to 150 vehicles for classical and 100 for Falcon; ML-DSA stays at 50.</p>
 
   <h3>The bigger bottleneck: signatures on every safety message</h3>
-  <p class="note">Safety messages only, no handshakes. "Delivered" means received and verified within 300 m. Steady state, 5 seeds per point.</p>
-  <div class="card"><div class="legend" id="bsmnet-legend"></div><div id="bsmnet-chart"></div></div>
-  <p class="takeaway">Ten signed messages a second per vehicle fill the channel. Falcon-512 saturates it from about 100 vehicles and ML-DSA-44 from about 50, while ECDSA still copes at 200. Quantum-safe broadcasting needs more than a signature swap: signing fewer messages, smaller certificates, or congestion control.</p>
+  <div class="card">
+    <p class="fig-read"><span class="tag">What you see</span>One line per signature scheme as more cars each broadcast ten signed safety messages a second; shaded bands are 95% confidence ranges. The buttons choose what is measured.</p>
+    <div class="legend" id="bsmnet-legend"></div><div id="bsmnet-chart"></div>
+    <p class="fig-how"><span class="tag">How we got it</span>Safety messages only, no handshakes. "Delivered" means received and verified within 300 m. Steady state, 5 random seeds per point. The channel load follows a formula up to saturation (<a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/04_network.md#45-channel-busy-ratio-from-safety-messages">report §4.5</a>).</p>
+  </div>
+  <p class="takeaway"><span class="tag">Why it matters</span>Ten signed messages a second per vehicle fill the channel. Falcon-512 starts to saturate it from about 100 vehicles (fully busy near 150) and ML-DSA-44 from about 50, while ECDSA uses less than half of it even at 200. At 100 vehicles only <b data-bind="b100_fal">–</b> of Falcon-512 messages reach the cars within 300 m. Quantum-safe broadcasting needs more than a signature swap: signing fewer messages, smaller certificates, or congestion control.</p>
 </div></section>
 
 <section id="experiments"><div class="wrap">
@@ -167,7 +188,9 @@
   <div class="eyebrow">Mathematical formulation</div>
   <h2>The equations predict what the simulator measures</h2>
   <p class="intro">Every simulated result has a step-by-step derivation, written out in <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/README.md">report/math/</a>: from single-qubit physics to the final key length, from the parameter sets of FIPS 203 and 204 <a class="cite" href="#ref7">[7]</a> <a class="cite" href="#ref8">[8]</a> to every byte on the air, and from 802.11p timing to handshake latency. The table puts a selection of predictions next to the measurements. Each formula is also code (<code>qsv2v/formulas.py</code>), and a test suite checks it against independent evidence: exact enumeration, the cryptographic libraries, the real encodings and the simulator itself.</p>
-  <div class="card tablewrap"><table><thead><tr><th>Area</th><th>Quantity</th><th>Formula</th><th class="r">Theory</th><th class="r">Measured</th><th>Agreement</th></tr></thead><tbody id="theory-rows"></tbody></table></div>
+  <div class="card tablewrap">
+    <p class="table-read"><b>How to read:</b> "Theory" is what the formula gives before anything is run; "Measured" is what the simulator or the real code produced. Agreement: <b>exact</b>, identical to the byte; <b>within error</b>, the gap is inside the measurement's statistical uncertainty; <b>inside measured range</b>, the prediction falls between the two simulated points around it; <b>lower bound</b>, the formula ignores other traffic, so the measurement should come out higher.</p>
+    <table><thead><tr><th>Area</th><th>Quantity</th><th>Formula</th><th class="r">Theory</th><th class="r">Measured</th><th>Agreement</th></tr></thead><tbody id="theory-rows"></tbody></table></div>
   <p class="note">"Lower bound": the idle-channel formula ignores other traffic. On a road with ten cars the 13-frame handshake meets contention and takes 15% longer, the effect that limits post-quantum handshakes at higher density. Where theory and measurement differ, the report quantifies the cause (<a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/01_qkd.md">BB84</a>, <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/04_network.md">network</a>).</p>
 
   <h3>Proofs for PQ-V2V-AKE</h3>
@@ -175,7 +198,9 @@
   <p class="note">Writing the unlinkability argument exposed a flaw that no test had caught. Pseudonym certificates started at each vehicle's enrollment time, so that time, taken modulo the certificate lifetime, linked all of a vehicle's pseudonyms. The authority now issues every certificate on one global time grid.</p>
 
   <h3>Security parameters against classical and quantum attackers</h3>
-  <div class="card tablewrap"><table><thead><tr><th>Primitive</th><th>Used in</th><th>Classical attacker</th><th>Quantum attacker</th><th>Source</th></tr></thead><tbody id="seclevel-rows"></tbody></table></div>
+  <div class="card tablewrap">
+    <p class="table-read"><b>How to read:</b> "n bits" means the best known attack takes about 2ⁿ operations; 128 bits is the usual target. NIST categories compare a scheme with a reference problem: category 1, 3 or 5 is at least as hard as recovering an AES-128, AES-192 or AES-256 key, and category 2 as finding a SHA-256 collision. Core-SVP is the standard conservative estimate of the best known lattice attack, in bits. <b>Red:</b> broken outright by Shor's algorithm on a large quantum computer.</p>
+    <table><thead><tr><th>Primitive</th><th>Used in</th><th>Classical attacker</th><th>Quantum attacker</th><th>Source</th></tr></thead><tbody id="seclevel-rows"></tbody></table></div>
   <p class="takeaway">Only the elliptic-curve rows lose everything to a quantum computer. Lattice schemes lose 11–17 bits of their core-SVP estimate; 256-bit symmetric keys keep 128 bits. The full lists, including the parameter sets and which security properties each of the four protocols keeps against each attacker, are in <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/05_security_parameters.md">chapter 5</a>.</p>
 </div></section>
 
@@ -236,6 +261,7 @@ pytest -q                        # the test suite</pre>
 </div></footer>
 
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="assets/figmath.js"></script>
 <script src="assets/app.js"></script>
 <script src="assets/bb84.js"></script>
 <script src="assets/lab.js"></script>

@@ -739,6 +739,19 @@ the key reaching zero just above 10% QBER. The lab's key length is an
 estimate, n(1 − (1 + f)h(Q)) − 131 with f = 1.16 measured in E4. The Python
 pipeline runs real Cascade and privacy amplification.
 
+**Reading the page's figures.** Every chart has the same three parts:
+*What you see* (the axes and marks in plain words), *How we got it* (the
+method) and *Why it matters* (the finding). The charts mark their own
+findings with abort and over-budget zones, threshold guides, callouts and
+labels at the end of each line. Latency points where most handshakes failed
+are drawn hollow, since their median covers only the few that finished.
+Colours follow the algorithm across Parts 3 and 4 (ECDSA blue, Falcon-512
+orange, ML-DSA-44 green) and were checked for colour-blind separation in
+both themes. Every number written on a chart (the abort crossings, the
+zero-key points, the dB/km fit) is computed from `docs/data/` by
+`docs/assets/figmath.js`. `tests/test_web_figures.py` runs that script under
+Node and checks it against `qsv2v.formulas` and the E3 result.
+
 ## Mathematical formulation and security parameters (Phase 10)
 
 [`report/math/`](report/math/README.md) gives the mathematics behind every
