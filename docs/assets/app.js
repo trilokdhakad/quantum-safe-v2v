@@ -240,6 +240,16 @@
       const kind = { Supported: 'ok', 'Partly supported': 'part', 'Not supported': 'bad' }[r.verdict] || 'muted';
       pill(tr, (r.verdict === 'Supported' ? '✓ ' : '') + r.verdict, kind); td(tr, r.finding, 'small');
     });
+    fill('#theory-rows', DATA.theory, 6, (tr, r) => {
+      td(tr, r.area); td(tr, r.quantity); td(tr, r.formula, 'small');
+      td(tr, r.theory, 'r'); td(tr, r.measured, 'r');
+      pill(tr, r.agreement === 'lower bound' ? 'lower bound' : '✓ ' + r.agreement, r.agreement === 'lower bound' ? 'part' : 'ok');
+    });
+    fill('#seclevel-rows', DATA.security_levels, 5, (tr, r) => {
+      td(tr, r.primitive); td(tr, r.used_in, 'small'); td(tr, r.classical, 'small');
+      if (/^none/.test(r.quantum)) pill(tr, r.quantum, 'bad'); else td(tr, r.quantum, 'small');
+      td(tr, r.source, 'small');
+    });
   }
 
   // ---------- message size bars ----------
@@ -477,7 +487,8 @@
 
   // ---------- boot ----------
   const NAMES = ['tests', 'qber_grid', 'key_rate', 'e3_distance', 'attacks', 'paper_errors', 'defenses', 'scyther',
-    'bsm_sizes', 'e7_cost', 'sim_steady', 'sim_broadcast', 'experiments', 'trace_classical', 'trace_pq_mldsa'];
+    'bsm_sizes', 'e7_cost', 'sim_steady', 'sim_broadcast', 'experiments', 'trace_classical', 'trace_pq_mldsa',
+    'theory', 'security_levels'];
   const charts = [eveChart, krChart, e3Chart, bsmChart, scaleChart, bsmNetChart];
   Promise.all(NAMES.map((n) => load(n).then((v) => { DATA[n] = v; }).catch((e) => console.error(e)))).then(() => {
     headline(); tables(); charts.forEach((f) => f()); replay();

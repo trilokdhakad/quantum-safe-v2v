@@ -13,7 +13,7 @@
   <b>QSV2V</b>
   <a href="#problem">Problem</a><a href="#qkd">1 · QKD</a><a href="#lab">Try BB84</a><a href="#attacks">2 · Attacks</a>
   <a href="#protocol">3 · Our protocol</a><a href="#network">4 · Network</a>
-  <a href="#experiments">Experiments</a><a href="#conclusions">Conclusions</a><a href="#references">References</a>
+  <a href="#experiments">Experiments</a><a href="#math">Mathematics</a><a href="#conclusions">Conclusions</a><a href="#references">References</a>
   <a href="https://github.com/trilokdhakad/quantum-safe-v2v">Code ↗</a>
 </div></nav>
 
@@ -163,6 +163,22 @@
   <div class="card tablewrap"><table><thead><tr><th>#</th><th>Experiment</th><th>Hypothesis</th><th>Verdict</th><th>What we measured</th></tr></thead><tbody id="exp-rows"></tbody></table></div>
 </div></section>
 
+<section id="math"><div class="wrap">
+  <div class="eyebrow">Mathematical formulation</div>
+  <h2>The equations predict what the simulator measures</h2>
+  <p class="intro">Every simulated result has a step-by-step derivation, written out in <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/README.md">report/math/</a>: from single-qubit physics to the final key length, from the parameter sets of FIPS 203 and 204 <a class="cite" href="#ref7">[7]</a> <a class="cite" href="#ref8">[8]</a> to every byte on the air, and from 802.11p timing to handshake latency. The table puts a selection of predictions next to the measurements. Each formula is also code (<code>qsv2v/formulas.py</code>), and a test suite checks it against independent evidence: exact enumeration, the cryptographic libraries, the real encodings and the simulator itself.</p>
+  <div class="card tablewrap"><table><thead><tr><th>Area</th><th>Quantity</th><th>Formula</th><th class="r">Theory</th><th class="r">Measured</th><th>Agreement</th></tr></thead><tbody id="theory-rows"></tbody></table></div>
+  <p class="note">"Lower bound": the idle-channel formula ignores other traffic. On a road with ten cars the 13-frame handshake meets contention and takes 15% longer, the effect that limits post-quantum handshakes at higher density. Where theory and measurement differ, the report quantifies the cause (<a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/01_qkd.md">BB84</a>, <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/04_network.md">network</a>).</p>
+
+  <h3>Proofs for PQ-V2V-AKE</h3>
+  <p class="note">In a Real-or-Random model <a class="cite" href="#ref9">[9]</a> where the attacker controls the radio, can steal long-term keys and can capture vehicles, <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/03_pq_v2v_ake_proofs.md">three theorems</a> reduce the protocol's security to that of ML-KEM-768, ML-DSA-44 and HMAC-SHA-256. Theorem 1 gives mutual authentication with key confirmation. Theorem 2 shows the session key stays secret even if every long-term key, and the authority's key, leaks afterwards (perfect forward secrecy). Theorem 3 covers the hybrid mode. The proofs use no random oracles, so they apply to quantum attackers. They are written by hand; the machine-checked part is the Scyther model above.</p>
+  <p class="note">Writing the unlinkability argument exposed a flaw that no test had caught. Pseudonym certificates started at each vehicle's enrollment time, so that time, taken modulo the certificate lifetime, linked all of a vehicle's pseudonyms. The authority now issues every certificate on one global time grid.</p>
+
+  <h3>Security parameters against classical and quantum attackers</h3>
+  <div class="card tablewrap"><table><thead><tr><th>Primitive</th><th>Used in</th><th>Classical attacker</th><th>Quantum attacker</th><th>Source</th></tr></thead><tbody id="seclevel-rows"></tbody></table></div>
+  <p class="takeaway">Only the elliptic-curve rows lose everything to a quantum computer. Lattice schemes lose 11–17 bits of their core-SVP estimate; 256-bit symmetric keys keep 128 bits. The full lists, including the parameter sets and which security properties each of the four protocols keeps against each attacker, are in <a href="https://github.com/trilokdhakad/quantum-safe-v2v/blob/master/report/math/05_security_parameters.md">chapter 5</a>.</p>
+</div></section>
+
 <section id="conclusions"><div class="wrap">
   <div class="eyebrow">Conclusions</div>
   <h2>What this means for vehicles</h2>
@@ -210,11 +226,12 @@ pip install -e ".[dev,oqs]"
 python -m qsv2v.attacks          # the seven attacks on the papers, then the Shor demo
 python -m qsv2v.attacks --pq     # the same attacks against PQ-V2V-AKE
 python -m qsv2v.experiments      # all ten experiments and every report figure
+python scripts/build_math_tables.py   # theory-vs-measured tables in report/math/
 pytest -q                        # the test suite</pre>
 </div></section>
 
 <footer><div class="wrap">
-  <p><b>Limits.</b> This is a simulation study: no real vehicles, radios or quantum hardware. Timings come from one laptop and vary by up to 2× between runs (CPU frequency scaling), so treat compute figures as an order of magnitude. Safety messages carry a 200-byte payload, and splitting messages over 1,400 bytes into fragments is hypothetical (real 802.11p cannot). Scyther results mean "no attack found within bounds", not a full proof.</p>
+  <p><b>Limits.</b> This is a simulation study: no real vehicles, radios or quantum hardware. Timings come from one laptop and vary by up to 2× between runs (CPU frequency scaling), so treat compute figures as an order of magnitude. Safety messages carry a 200-byte payload, and splitting messages over 1,400 bytes into fragments is hypothetical (real 802.11p cannot). Scyther results mean "no attack found within bounds", not a full proof; the computational proofs are hand-written, not machine-checked, and Theorem 3 (hybrid mode) rests on an explicitly stated assumption about HMAC.</p>
   <p>Data on this page: <code>docs/data/</code>, produced by <code>scripts/build_showcase_data.py</code> and <code>scripts/build_site.py</code> from the experiment outputs. Tests: <span data-bind="tests_passed">–</span> of <span data-bind="tests_total">–</span> passing.</p>
 </div></footer>
 

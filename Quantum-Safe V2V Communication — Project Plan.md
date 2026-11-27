@@ -208,7 +208,7 @@ Ten phases, each ending with working, tested code before the next starts; Phases
     - PQ handshakes are 15–17% above the idle-channel bound because of contention.
   - Findings:
     - E1's "38% with 2% noise" was printed from the formula, not measured. The measured value is also 38%.
-    - Pseudonym validity windows must sit on a global time grid, or a vehicle's enrollment time links its pseudonyms. The simulation enrolls all vehicles at once, so E5 could not see this.
+    - Pseudonym validity windows started at the enrollment time, which linked a vehicle's pseudonyms (the simulation enrolls all vehicles at once, so E5 could not see it). Fixed: the authority now issues windows on a global grid `[kL, (k+1)L)`, checked by a new test in `tests/test_certs.py`.
     - Theorem 3 (hybrid mode) rests on an explicitly stated concatenation-combiner assumption that is stronger than what has been proved for HMAC.
 
 ## Experiments and evaluation

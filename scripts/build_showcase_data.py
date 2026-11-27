@@ -67,6 +67,7 @@ PHASES = [
     (7, "Experiments and analysis (E1-E10)"),
     (8, "Dashboard (optional)"),
     (9, "Report"),
+    (10, "Mathematical formulation and security parameters"),
 ]
 
 PAPER_ERRORS = [
@@ -95,6 +96,38 @@ PAPER_ERRORS = [
         "effect": "Uses values the drone does not have; Fig. 2 is consistent",
     },
 ]
+
+# Chapter 5 of report/math/: security of every primitive against classical and quantum
+# attackers. Reference data read from the cited documents (like PAPER_ERRORS above).
+SECURITY_LEVELS = [
+    {"primitive": "ECDH / ECDSA P-256", "used_in": "PSLAP, PSRS-D2D, IEEE 1609.2 today",
+     "classical": "≈ 128 bits (Pollard rho 2^127.8)",
+     "quantum": "none: Shor, ≈ 2330 logical qubits", "source": "Roetteler et al. 2017"},
+    {"primitive": "X25519", "used_in": "hybrid mode", "classical": "slightly under 128 bits",
+     "quantum": "none (Shor)", "source": "RFC 7748 §7"},
+    {"primitive": "ML-KEM-768", "used_in": "PQ-V2V-AKE key exchange",
+     "classical": "NIST category 3; core-SVP 183", "quantum": "category 3; core-SVP 166",
+     "source": "FIPS 203; Kyber spec v3.02 Table 4"},
+    {"primitive": "ML-KEM-512 (Kyber-512)", "used_in": "P²AS-IoAV evaluation",
+     "classical": "category 1; core-SVP 118", "quantum": "category 1; core-SVP 107",
+     "source": "Kyber spec v3.02 Table 4"},
+    {"primitive": "ML-DSA-44", "used_in": "PQ-V2V-AKE signatures and certificates",
+     "classical": "category 2; core-SVP 123", "quantum": "category 2; core-SVP 112",
+     "source": "FIPS 204; Dilithium spec v3.1 Table 1"},
+    {"primitive": "Falcon-512", "used_in": "safety messages",
+     "classical": "category 1; core-SVP 120 (forgery)", "quantum": "category 1; core-SVP 108",
+     "source": "Falcon spec v1.2 Table 3.3"},
+    {"primitive": "SHA-256", "used_in": "transcript hashes",
+     "classical": "collisions 2^128, preimages 2^256",
+     "quantum": "collisions ≈ 128 bits, preimages 2^128 (Grover)",
+     "source": "FIPS 180-4; Brassard–Høyer–Tapp 1998; Bernstein 2009"},
+    {"primitive": "HMAC-SHA-256 / HKDF, 256-bit keys", "used_in": "key derivation, MACs",
+     "classical": "256 bits", "quantum": "128 bits (Grover)",
+     "source": "Backendal et al. 2023"},
+    {"primitive": "BB84 + Cascade + Toeplitz", "used_in": "QKD path",
+     "classical": "information-theoretic, ε ≤ 2·10^-10 + 2^-64",
+     "quantum": "same: no computational assumption", "source": "Shor–Preskill 2000"},
+]  # fmt: skip
 
 HEADLINE_FIELD = {
     "Passive session-key": "session key",
@@ -399,6 +432,131 @@ def build_e7() -> list[dict]:
     return _rows(EXP / "e07_handshake_cost" / "summary.csv", keep)
 
 
+def build_theory() -> list[dict]:
+    """Headline theory-vs-measured checks from report/math/ (Phase 10).
+
+    Predictions come from qsv2v.formulas; measurements from results/experiments/ and
+    results/sim/crypto_profile.json, read with the same helpers that write the
+    report's tables (scripts/build_math_tables.py).
+    """
+    import build_math_tables as T
+
+    from qsv2v import formulas as F
+
+    e1 = T.rows("e01_eve_detection")
+    q100 = next(
+        T.num(r["qber_estimated"])
+        for r in e1
+        if T.num(r["noise"]) == 0 and T.num(r["eve_fraction"]) == 1
+    )
+
+    def f50(e):
+        pts = [r for r in e1 if T.num(r["noise"]) == e]
+        ys, xs = [T.num(r["abort_rate"]) for r in pts], [T.num(r["eve_fraction"]) for r in pts]
+        return float(np.interp(0.5, ys, xs))
+
+    e3 = T.rows("e03_distance_loss")
+    e3n = T.result("e03_distance_loss")["numbers"]
+    link = F.LinkModel()
+    pos = max(int(T.num(r["distance_km"])) for r in e3 if T.num(r["skr_asymptotic"]) > 0)
+    zero = min(int(T.num(r["distance_km"])) for r in e3 if T.num(r["skr_asymptotic"]) <= 0)
+    e2 = T.rows("e02_channel_noise")
+    e2n = T.result("e02_channel_noise")["numbers"]
+    last_key = max(T.num(r["qber_measured"]) for r in e2 if T.num(r["key_fraction"]) > 0)
+    data = T.rows("e02_channel_noise", "data.csv")
+    n_key = np.mean([T.num(x["sifted_bits"]) for x in data if 0.08 <= T.num(x["noise"]) <= 0.11])
+    over, fbar = F.finite_key_overhead(int(n_key)), e2n["cascade_f"]
+    lo, hi = 1e-6, 0.5
+    for _ in range(200):  # zero of 1 - (1 + f) h(Q) - overhead
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if F.key_fraction(mid, fbar) - over > 0 else (lo, mid)
+    prof = json.loads(T.PROFILE.read_text(encoding="utf-8"))
+    hs, bc = prof["handshakes"], prof["broadcasts"]
+    e9 = T.rows("e09_network_scale")
+
+    def p50(name):
+        return next(
+            T.num(r["hs_latency_ms_p50"])
+            for r in e9
+            if r["sweep"] == "handshake"
+            and r["hs_policy"] == "all"
+            and r["handshake_profile"] == name
+            and int(r["n_vehicles"]) == 10
+            and r["bsm_profile"] == "falcon"
+            and T.num(r["speed_scale"]) == 1.0
+        )
+
+    def l0(name):
+        h = hs[name]
+        return 1e3 * F.handshake_latency_zero_load(
+            (h["m1_bytes"], h["m2_bytes"], h["m3_bytes"]),
+            (h["t_initiate"], h["t_respond"], h["t_finish"], h["t_confirm"]),
+        )
+
+    cbr50 = next(
+        T.num(r["cbr_mean"])
+        for r in e9
+        if r["sweep"] == "broadcast" and r["bsm_profile"] == "falcon" and int(r["n_vehicles"]) == 50
+    )
+    fal = bc["falcon"]
+    rho50 = F.offered_load(50, fal["msg_digest_bytes"], fal["msg_cert_bytes"])
+    kem = F.mlkem_sizes(3, 10, 4)
+    dsa = F.mldsa_sizes(4, 4, 8380417, 13, 2**17, 80, 128)
+    cert = F.cert_size("ML-DSA-44", dsa["pk"], dsa["sig"])
+    sz = F.handshake_sizes(kem["ek"], kem["ct"], cert, dsa["sig"])
+    e7 = next(r for r in T.rows("e07_handshake_cost") if r["protocol"] == "PQ-V2V-AKE")
+    e8 = next(r for r in T.rows("e08_message_size") if r["vehicle_alg"] == "ML-DSA-44")
+
+    def pct(x):
+        return f"{100 * x:.1f}%"
+
+    def row(area, quantity, formula, theory, measured, agreement, chapter):
+        return {
+            "area": area,
+            "quantity": quantity,
+            "formula": formula,
+            "theory": theory,
+            "measured": measured,
+            "agreement": agreement,
+            "chapter": chapter,
+        }
+
+    q, n = "01_qkd.md", "04_network.md"
+    return [
+        row("BB84", "QBER with Eve on every photon", "e + f/4 − fe/2", "25.0%", pct(q100),
+            "within error", q),
+        row("BB84", "Eve fraction that triggers the 11% abort, clean channel",
+            "(Q_th − e) / (1/4 − e/2)", pct(F.abort_fraction(0.0)), pct(f50(0.0)),
+            "within error", q),
+        row("BB84", "… with 2% channel noise", "same", pct(F.abort_fraction(0.02)),
+            pct(f50(0.02)), "within error", q),
+        row("BB84", "QBER where the final key reaches zero (Cascade)",
+            "1 − (1+f)h(Q) − 131/n = 0", f"{100 * lo:.2f}%",
+            f"between {100 * last_key:.2f}% and {100 * e2n['zero_key_qber']:.2f}%",
+            "inside measured range", q),
+        row("BB84", "Key-rate loss per km", "α dB/km", f"{link.alpha_db_per_km:.2f} dB/km",
+            f"{e3n['db_per_km']:.3f} dB/km", "within error", q),
+        row("BB84", "Distance where the key rate reaches zero", "(1+f)h(Q(d)) = 1",
+            f"{link.cutoff_km():.1f} km", f"between {pos} and {zero} km",
+            "inside measured range", q),
+        row("Sizes", "Handshake message 1 (ML-KEM-768 + ML-DSA-44)", "62 + ek + cert + σ",
+            f"{sz['m1']:,} B", f"{hs['pq-mldsa']['m1_bytes']:,} B", "exact", n),
+        row("Sizes", "Whole handshake", "m1 + m2 + m3", f"{sz['m1'] + sz['m2'] + sz['m3']:,} B",
+            f"{int(T.num(e7['bytes_total'])):,} B", "exact", n),
+        row("Sizes", "ML-DSA-44 safety message with digest", "36 + len(alg) + payload + σ",
+            f"{F.bsm_size('ML-DSA-44', 200, dsa['sig']):,} B",
+            f"{int(T.num(e8['msg_with_digest_bytes'])):,} B", "exact", n),
+        row("Network", "Classical handshake latency (3 frames)", "compute + Σ frame times",
+            f"{l0('classical'):.2f} ms", f"{p50('classical'):.1f} ms (10 cars)",
+            "within error", n),
+        row("Network", "ML-DSA handshake latency (13 frames)", "compute + Σ frame times",
+            f"{l0('pq-mldsa'):.2f} ms (idle channel)", f"{p50('pq-mldsa'):.1f} ms (10 cars)",
+            "lower bound", n),
+        row("Network", "Channel busy ratio, Falcon-512, 50 cars", "(2 d_cs / L) · N · r · T̄",
+            f"{rho50:.3f}", f"{cbr50:.3f}", "within error", n),
+    ]  # fmt: skip
+
+
 def copy_traces(out: Path) -> None:
     import shutil
 
@@ -431,6 +589,12 @@ def main() -> None:
         "e3_distance": (build_e3, "results/experiments/e03_distance_loss/summary.csv"),
         "e7_cost": (build_e7, "results/experiments/e07_handshake_cost/summary.csv"),
         "tests": (build_tests, "pytest --junitxml over tests/"),
+        "theory": (build_theory, "qsv2v.formulas vs results/ (report/math/, Phase 10)"),
+        "security_levels": (
+            lambda: SECURITY_LEVELS,
+            "Read from FIPS 203/204, the algorithm specifications, RFC 7748 and "
+            "Roetteler et al. (report/math/05_security_parameters.md)",
+        ),
     }
     for name, (fn, inputs) in jobs.items():
         if only is None or name in only:

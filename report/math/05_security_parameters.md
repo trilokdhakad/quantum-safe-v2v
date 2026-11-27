@@ -133,7 +133,7 @@ tests check them against liboqs.
 | MAC tags $\tau_R, \tau_I$ | 256 bits | guessing a tag: $2^{-256}$ (Theorem 1) | `mac` |
 | Protocol label | `PQ-V2V-AKE-v1` | domain separation of signatures and keys (Lemma 3.2) | `LABEL` |
 | Pseudonym | 16 random bytes | anonymity (§3.8) | `PSEUDONYM_LEN` |
-| Pseudonym lifetime $L$ | 300 s (default); windows should sit on a global grid | unlinkability across windows (§3.8) | `setup_network` |
+| Pseudonym lifetime $L$ | 300 s (default); windows on the global grid $[kL, (k+1)L)$ | unlinkability across windows: validity fields reveal nothing about the holder (§3.8) | `Authority.enroll` |
 | Certificate digest | 64 bits (as IEEE 1609.2 HashedId8) | lookup only, among certificates already verified. A digest collision causes a verification failure, not a forgery, and among $N$ cached certificates has probability ≤ $N^2/2^{65}$ | `PseudonymCert.digest` |
 | Revocation | signed CRL of pseudonyms | revoked pseudonyms rejected | `verify_cert` |
 
@@ -166,7 +166,7 @@ we did not break the property, not that it is proved.
 | **Mutual authentication** | C: no attack found. Q: **no**, ECC keys recoverable by Shor | C: **no**, impersonation after two captures (§2.1.3). Q: **no** | C: **no**, a forged message 1 is accepted (§2.3.1). Q: **no** | C, Q: **yes**, Theorem 1 |
 | **Perfect forward secrecy** | C: yes, the key uses ephemeral ECDH. Q: **no**, recorded ephemerals fall to Shor | C, Q: **no**, one capture opens all past sessions (§2.1.2) | C, Q: **no**, static keys only (§2.3.2) | C, Q: **yes**, Theorem 2 (dk erased) |
 | **Anonymity** (real identity hidden) | C: text version **no** (PID in clear); figure version yes against outsiders, **no** against drones. Q: **no** | C, Q: **no**, identity unmasked (§2.1.1) | C: partial, ID only under $k_i$, open to drone-key holders and to the escrowing TA. Q: same | C, Q: **yes**, random pseudonyms only (§3.8) |
-| **Unlinkability** | C, Q: **no**, static PID (§2.2.1) | C, Q: **no** | C, Q: partial (as above) | C, Q: **yes** across pseudonyms, with windows on a global grid (§3.8) |
+| **Unlinkability** | C, Q: **no**, static PID (§2.2.1) | C, Q: **no** | C, Q: partial (as above) | C, Q: **yes** across pseudonyms; validity windows on a global grid (§3.8) |
 | **Resistance to vehicle or drone capture** | C, Q: partial, the OBU allows offline password guessing (§2.2.2) | C, Q: **no**, two captures give the master keys (§2.1.3) | C, Q: **no**, TA key escrow and static keys | C, Q: **yes**, capture yields only that vehicle's current pseudonym keys: no past sessions, no CA key, no other vehicle (Theorem 2; E5) |
 | **Password guessing resistance** | C, Q: **no** (§2.2.2) | not applicable | not applicable | not applicable: nothing password-derived is stored (E5) |
 | **Replay resistance** | timestamps (not analysed here) | timestamps (not analysed here) | timestamps (not analysed here) | C, Q: **yes**, timestamp and nonce cache (Lemma 3.4) |

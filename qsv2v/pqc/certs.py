@@ -156,12 +156,22 @@ class Authority:
         ``proofs[i]`` is the vehicle's signature over (real_id || public_keys[i]):
         proof that it holds the private key. Enrollment runs over a secure,
         authenticated channel (as in all three base papers).
+
+        Windows lie on one global grid, [k L, (k+1) L) for integer k: the first
+        is the grid window containing ``start``. If windows began at the
+        enrollment time instead, not_before mod L would be the same for all of a
+        vehicle's pseudonyms and differ between vehicles, linking them
+        (report/math/03_pq_v2v_ake_proofs.md, section 3.8). On the grid, every
+        vehicle's certificate for a given window carries the same validity fields.
         """
+        if lifetime <= 0:
+            raise ValueError("lifetime must be positive")
+        first = start - start % lifetime
         certs = []
         for i, (pk, proof) in enumerate(zip(public_keys, proofs, strict=True)):
             if not scheme.verify(pk, b"QSV2V-POP" + real_id + pk, proof):
                 raise CertError("proof of possession failed")
-            nb = start + i * lifetime
+            nb = first + i * lifetime
             certs.append(self.issue(real_id, pk, scheme.name, nb, nb + lifetime))
         return certs
 

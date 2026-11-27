@@ -20,7 +20,8 @@ DEST = ROOT / "docs" / "data"
 NAMES = [
     "phases", "tests", "qber_grid", "key_rate", "e3_distance", "attacks", "paper_errors",
     "defenses", "scyther", "bsm_sizes", "e7_cost", "crypto_ops", "sim_steady",
-    "sim_broadcast", "experiments", "trace_classical", "trace_pq_mldsa",
+    "sim_broadcast", "experiments", "trace_classical", "trace_pq_mldsa", "theory",
+    "security_levels",
 ]  # fmt: skip
 ROUND = 5  # significant digits kept for floats (smaller files, no visible change)
 

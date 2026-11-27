@@ -785,10 +785,12 @@ What the checks found (all generated from `results/`):
   - Post-quantum handshakes in a 10-car network take 15–17% longer than the
     idle-channel prediction, because they have more frames that can meet
     contention.
-- **Design finding (§3.8):** pseudonym validity windows must be aligned to a
-  global time grid. Otherwise a vehicle's enrollment time modulo the lifetime
-  links all of its pseudonyms. The simulation enrolls every vehicle at once,
-  which is why E5's linking test found nothing.
+- **Design flaw found and fixed (§3.8):** pseudonym validity windows used to
+  start at the enrollment time. That made a vehicle's enrollment time modulo
+  the lifetime a fingerprint linking all of its pseudonyms. E5 missed it
+  because the simulation enrolls every vehicle at once. The authority now
+  issues windows on a global grid `[kL, (k+1)L)`, and a new test checks that
+  two vehicles enrolling at different times get identical validity fields.
 
 ## References
 

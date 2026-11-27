@@ -480,21 +480,31 @@ same vehicle. Field by field:
   $[t_\text{nb}, t_\text{na})$ and the algorithm name.
 
 The algorithm name is the same for every vehicle. A vehicle's pseudonyms have
-consecutive windows of length $L = 300$ s starting at its enrollment time
-$t_0$. So $t_\text{nb} \equiv t_0 \pmod L$ for all of them.
+consecutive windows of length $L = 300$ s.
 
-**Finding.** If vehicles enrol at different times, $t_0 \bmod L$ is a
-fingerprint that links all of a vehicle's pseudonyms. In our simulation all
-vehicles enrol at the same instant, so every window lies on one global grid
-and this channel is closed. That is why E5's linking test finds nothing. A
-deployment should align every window to a global grid
-($t_\text{nb} = kL$, as IEEE 1609.2 pseudonym schedules do), which closes the
-channel in general. Within one pseudonym's window, sessions are linkable by
-design. This is the same trade-off IEEE 1609.2 makes.
+**Finding, and the fix applied.** In the first version, the windows started
+at the vehicle's enrollment time $t_0$, so $t_\text{nb} \equiv t_0 \pmod L$
+for all of a vehicle's pseudonyms. Vehicles that enrol at different times
+then differ in $t_0 \bmod L$, and that residue links all of a vehicle's
+pseudonyms. Our simulation enrolled every vehicle at the same instant, which
+hid the problem: E5's linking test could not see it.
+
+The authority now puts every window on one global grid,
+$[kL, (k+1)L)$ for integer $k$, with the first window being the one that
+contains the enrollment time (`Authority.enroll`). IEEE 1609.2 pseudonym
+schedules follow the same idea. Every vehicle's certificate for window $k$
+then carries the same validity fields, $(kL, (k+1)L)$, so they reveal nothing
+about who holds the certificate or when it enrolled.
+`tests/test_certs.py::test_validity_windows_do_not_reveal_enrollment_time`
+checks this with two vehicles enrolling at different times. That test fails
+on the first version.
+
+Within one pseudonym's window, sessions are linkable by design. This is the
+same trade-off IEEE 1609.2 makes.
 
 The same certificate signs safety messages and handshakes, so within a window
 the two kinds of traffic are linkable to each other. Across windows, nothing
-in either kind of traffic links pseudonyms, given the grid alignment above.
+in either kind of traffic links pseudonyms.
 
 ## 3.9 Relation to the Scyther verification
 
